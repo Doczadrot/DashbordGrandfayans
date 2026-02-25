@@ -1,0 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+@import 'react-grid-layout/css/styles.css';
+@import 'react-resizable/css/styles.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: theme('colors.ios.dark-blue');
+    @apply text-white antialiased font-sans;
+    font-family: 'Nunito', sans-serif;
+    background-image: radial-gradient(at 0% 0%, hsla(220, 50%, 10%, 0.8) 0, transparent 50%), radial-gradient(at 50% 0%, hsla(225, 60%, 15%, 0.8) 0, transparent 50%), radial-gradient(at 100% 0%, hsla(230, 70%, 20%, 0.8) 0, transparent 50%);
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/10 backdrop-blur-xl border border-white/10 shadow-xl rounded-2xl transition-all duration-300 text-white;
+  }
+  
+  .glass-panel {
+    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-xl text-gray-200;
+  }
+
+  .btn-ios {
+    @apply px-6 py-2.5 rounded-full font-medium transition-all active:scale-95 duration-200 flex items-center justify-center gap-2;
+  }
+
+  .btn-primary {
+    @apply bg-ios-blue text-white hover:bg-blue-500 shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40;
+  }
+
+  .btn-secondary {
+    @apply bg-white/10 text-white hover:bg-white/20 border border-white/10 shadow-sm backdrop-blur-sm;
+  }
+  
+  .input-ios {
+    @apply w-full px-4 py-2 rounded-xl border border-white/10 bg-white/10 focus:outline-none focus:ring-2 focus:ring-ios-blue/50 focus:bg-white/20 transition-all text-white placeholder-gray-400;
+  }
+
+  .tile-drag-handle {
+    @apply cursor-grab active:cursor-grabbing select-none;
+  }
+
+  /* Custom Resize Handle Styling */
+  .react-resizable-handle {
+    opacity: 0; /* Hidden by default */
+    transition: opacity 0.2s;
+  }
+
+  .react-grid-item:hover .react-resizable-handle {
+    opacity: 1; /* Show on hover */
+  }
+
+  .react-resizable-handle::after {
+    content: "";
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid rgba(255, 255, 255, 0.5);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.5);
+    border-bottom-right-radius: 2px;
+  }
+
+  .react-resizable-handle:hover::after {
+    border-color: rgba(255, 255, 255, 0.9);
+    width: 10px;
+    height: 10px;
+  }
+}

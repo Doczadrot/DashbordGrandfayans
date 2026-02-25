@@ -1,0 +1,171 @@
+
+import fs from 'fs';
+import path from 'path';
+
+// This script will generate a static HTML file by extracting data from local storage (if possible) 
+// or by providing a template where user can paste the state.
+// Since I cannot access the browser's localStorage directly, I will create a "Data Export" utility
+// that generates a single HTML file with the dashboard logic and embedded data.
+
+const template = `
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quality Dashboard - Static Export</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .glass-card { 
+            background: rgba(255, 255, 255, 0.05); 
+            backdrop-filter: blur(10px); 
+            border: 1px border rgba(255, 255, 255, 0.1); 
+            border-radius: 16px;
+        }
+    </style>
+</head>
+<body class="p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-10 flex justify-between items-end">
+            <div>
+                <h1 class="text-4xl font-bold mb-2">Отчет по качеству</h1>
+                <p class="text-gray-400">Статическая копия дашборда</p>
+            </div>
+            <div id="meta-info" class="text-right text-sm text-gray-500"></div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10" id="stats-grid">
+            <!-- Stats will be injected here -->
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+            <div class="glass-card p-6 h-[400px]">
+                <h3 class="text-lg font-bold mb-4">Динамика брака по месяцам</h3>
+                <canvas id="dynamicsChart"></canvas>
+            </div>
+            <div class="glass-card p-6 h-[400px]">
+                <h3 class="text-lg font-bold mb-4">Топ-10 Номенклатур</h3>
+                <canvas id="topSkuChart"></canvas>
+            </div>
+        </div>
+
+        <div class="glass-card p-6 overflow-hidden">
+            <h3 class="text-lg font-bold mb-4">Детальные данные (Первые 100 строк)</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm" id="data-table">
+                    <thead>
+                        <tr class="border-b border-white/10">
+                            <th class="py-2 px-4">Месяц</th>
+                            <th class="py-2 px-4">Номенклатура</th>
+                            <th class="py-2 px-4">Дефект</th>
+                            <th class="py-2 px-4">Поставщик</th>
+                            <th class="py-2 px-4">Кол-во</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Data will be injected here by the generator script
+        const DASHBOARD_DATA = {data: [], sales: [], meta: {}};
+
+        function init() {
+            const { data, sales, meta } = DASHBOARD_DATA;
+            
+            // Meta
+            document.getElementById('meta-info').innerText = 'Файлы: ' + (meta.fileName || 'Нет данных');
+
+            // Stats
+            const totalDefects = data.reduce((sum, d) => sum + d.quantity, 0);
+            const totalSales = sales.reduce((sum, s) => sum + s.quantity, 0);
+            const rate = totalSales > 0 ? (totalDefects / totalSales * 100).toFixed(2) : 0;
+
+            const statsGrid = document.getElementById('stats-grid');
+            statsGrid.innerHTML = \`
+                <div class="glass-card p-6">
+                    <p class="text-xs text-gray-400 uppercase font-bold mb-1">Всего брака</p>
+                    <p class="text-3xl font-bold">\${totalDefects.toLocaleString()} шт.</p>
+                </div>
+                <div class="glass-card p-6">
+                    <p class="text-xs text-gray-400 uppercase font-bold mb-1">Продажи</p>
+                    <p class="text-3xl font-bold text-blue-400">\${totalSales.toLocaleString()} шт.</p>
+                </div>
+                <div class="glass-card p-6">
+                    <p class="text-xs text-gray-400 uppercase font-bold mb-1">Процент брака</p>
+                    <p class="text-3xl font-bold text-red-400">\${rate}%</p>
+                </div>
+            \`;
+
+            // Charts
+            const months = [...new Set(data.map(d => d.reportMonth))].sort();
+            
+            new Chart(document.getElementById('dynamicsChart'), {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Брак (шт)',
+                        data: months.map(m => data.filter(d => d.reportMonth === m).reduce((sum, d) => sum + d.quantity, 0)),
+                        backgroundColor: '#FF6384'
+                    }]
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#fff' } } },
+                    scales: { 
+                        x: { ticks: { color: '#9ca3af' }, grid: { display: false } },
+                        y: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                    }
+                }
+            });
+
+            const skus = {};
+            data.forEach(d => { skus[d.nomenclature] = (skus[d.nomenclature] || 0) + d.quantity; });
+            const topSkus = Object.entries(skus).sort((a,b) => b[1] - a[1]).slice(0, 10);
+
+            new Chart(document.getElementById('topSkuChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: topSkus.map(s => s[0].length > 20 ? s[0].substring(0,20)+'...' : s[0]),
+                    datasets: [{
+                        data: topSkus.map(s => s[1]),
+                        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40']
+                    }]
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'right', labels: { color: '#fff', font: { size: 10 } } } }
+                }
+            });
+
+            // Table
+            const tbody = document.querySelector('#data-table tbody');
+            data.slice(0, 100).forEach(d => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-white/5 hover:bg-white/5 transition-colors';
+                tr.innerHTML = \`
+                    <td class="py-2 px-4 text-gray-400">\${d.reportMonth}</td>
+                    <td class="py-2 px-4 font-medium">\${d.nomenclature}</td>
+                    <td class="py-2 px-4 text-red-300">\${d.defectDescription}</td>
+                    <td class="py-2 px-4 text-gray-400">\${d.supplier}</td>
+                    <td class="py-2 px-4">\${d.quantity}</td>
+                \`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
+`;
+
+// In a real scenario, this would be integrated into the UI.
+// For now, I'm providing the template and instructions.
+fs.writeFileSync('dashboard_export_template.html', template);
+console.log('Template created: dashboard_export_template.html');
