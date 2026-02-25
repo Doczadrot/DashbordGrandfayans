@@ -30,6 +30,7 @@ interface AppState {
   loadState: (state: Partial<AppState>) => void;
   autoClassifySuppliers: () => void;
   resetStore: () => void;
+  resetSalesData: () => void;
 }
 
 export const useStore = create<AppState>()(
@@ -54,7 +55,26 @@ export const useStore = create<AppState>()(
       },
       addSalesData: (newSales) => {
         console.log("STORE: Adding sales data, count:", newSales.length);
-        set((state) => ({ salesData: [...state.salesData, ...newSales] }));
+        set((state) => {
+            // Deduplicate based on month, nomenclature, supplier, and quantity
+            // to avoid doubling the same file content if uploaded twice
+            const existingSales = state.salesData;
+            const uniqueNewSales = newSales.filter(ns => 
+                !existingSales.some(es => 
+                    es.month === ns.month && 
+                    es.nomenclature === ns.nomenclature && 
+                    es.supplier === ns.supplier && 
+                    es.quantity === ns.quantity
+                )
+            );
+            
+            if (uniqueNewSales.length === 0) {
+                console.log("STORE: All new sales data are duplicates, skipping.");
+                return state;
+            }
+            
+            return { salesData: [...state.salesData, ...uniqueNewSales] };
+        });
       },
       addWriteOffFile: (file) => {
         console.log("STORE: Adding write-off file:", file.filename, "groups:", file.groups.length);
@@ -75,6 +95,10 @@ export const useStore = create<AppState>()(
       resetStore: () => {
         console.log("STORE: Resetting entire store");
         set({ data: [], salesData: [], writeOffData: [], meta: { fileName: '', reportMonth: '' }, supplierGroups: { china: [], rf: [], furniture: [] } });
+      },
+      resetSalesData: () => {
+        console.log("STORE: Resetting only sales data");
+        set({ salesData: [] });
       },
       loadState: (newState) => {
         console.log("STORE: Loading state partial");

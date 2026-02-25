@@ -100,7 +100,7 @@ export const DetailsPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { data, salesData, supplierGroups, addData, addSalesData, updateMeta, meta, resetStore } = useStore();
+  const { data, salesData, supplierGroups, addData, addSalesData, updateMeta, meta, resetStore, resetSalesData } = useStore();
   const [isUploading, setIsUploading] = useState(false);
 
   const type = searchParams.get('type') as 'supplier' | 'reason' | 'description' | 'group' | null;
@@ -266,9 +266,9 @@ export const DetailsPage: React.FC = () => {
   };
 
   const handleReset = () => {
-    if (confirm('Вы уверены, что хотите сбросить все данные? Это действие нельзя отменить.')) {
-        resetStore();
-        addLog('Данные полностью сброшены');
+    if (confirm('Вы уверены, что хотите сбросить только данные о продажах МП? Данные о браке останутся.')) {
+        resetSalesData();
+        addLog('Данные о продажах МП сброшены');
         navigate('/dashboard');
     }
   };
@@ -940,6 +940,125 @@ export const DetailsPage: React.FC = () => {
                         y: { display: false },
                         r: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { display: false, backdropColor: 'transparent' } }
                     } 
+                }
+            };
+        }
+        case 'kpi_broken_ozon_yandex': {
+            // KPI calculation: (Reason includes "бой", "озон", "яндекс" / Sales) * 100
+            const kpiData = months.map(month => {
+                const brokenCount = data.filter(d => {
+                    if (d.reportMonth !== month) return false;
+                    const reason = (d.claimReason || '').toLowerCase();
+                    // Robust matching for "Бой ОЗОН, Яндекс" or "Бой Озон Яндекс"
+                    return reason.includes('бой') && (reason.includes('озон') || reason.includes('яндекс'));
+                }).reduce((sum, item) => sum + item.quantity, 0);
+
+                const salesCount = salesData.filter(s => s.month === month)
+                    .reduce((sum, item) => sum + item.quantity, 0);
+
+                const kpiPercent = salesCount > 0 ? (brokenCount / salesCount) * 100 : 0;
+                
+                return {
+                    month,
+                    broken: brokenCount,
+                    sales: salesCount,
+                    kpi: parseFloat(kpiPercent.toFixed(2))
+                };
+            });
+
+            return {
+                type: 'bar', // We'll use a mixed chart: bars for absolute values, line for KPI %
+                data: {
+                    labels: months,
+                    datasets: [
+                        {
+                            type: 'bar' as const,
+                            label: 'Брак (Бой Озон Яндекс)',
+                            data: kpiData.map(d => d.broken),
+                            backgroundColor: '#FF3B30', // Red for defects
+                            borderRadius: 4,
+                            yAxisID: 'y',
+                            order: 2,
+                            barPercentage: 1.0,
+                            categoryPercentage: 0.4
+                        },
+                        {
+                            type: 'bar' as const,
+                            label: 'Продажи всего',
+                            data: kpiData.map(d => d.sales),
+                            backgroundColor: '#34C75940', // Semi-transparent green for sales
+                            borderColor: '#34C759',
+                            borderWidth: 1,
+                            borderRadius: 4,
+                            yAxisID: 'y',
+                            order: 3,
+                            barPercentage: 1.0,
+                            categoryPercentage: 0.4
+                        },
+                        {
+                            type: 'line' as const,
+                            label: 'KPI %',
+                            data: kpiData.map(d => d.kpi),
+                            borderColor: '#0A84FF',
+                            backgroundColor: '#0A84FF',
+                            borderWidth: 3,
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            yAxisID: 'y1',
+                            tension: 0.4,
+                            order: 1
+                        }
+                    ]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        x: { 
+                            stacked: false, // Ensure bars are side-by-side
+                            grid: { display: false }, 
+                            ticks: { color: '#e5e7eb' } 
+                        },
+                        y: { 
+                            stacked: false, // Ensure bars are side-by-side
+                            display: true,
+                            position: 'left' as const,
+                            title: { display: true, text: 'Количество (шт)', color: '#9ca3af' },
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#9ca3af' }
+                        },
+                        y1: {
+                            type: 'linear' as const,
+                            display: true,
+                            position: 'right' as const,
+                            title: { display: true, text: 'KPI %', color: '#0A84FF' },
+                            grid: { drawOnChartArea: false },
+                            ticks: { 
+                                color: '#0A84FF',
+                                callback: (val: any) => `${val}%`
+                            }
+                        }
+                    },
+                    plugins: {
+                        ...commonOptions.plugins,
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx: any) => {
+                                    const val = ctx.raw;
+                                    const label = ctx.dataset.label;
+                                    const month = ctx.label;
+                                    
+                                    if (label === 'KPI %') {
+                                        const d = kpiData.find(kd => kd.month === month);
+                                        if (d) {
+                                            return `${label}: ${val}% (Брак: ${d.broken} шт, Прод: ${d.sales} шт)`;
+                                        }
+                                        return `${label}: ${val}%`;
+                                    }
+                                    return `${label}: ${val} шт.`;
+                                }
+                            }
+                        }
+                    }
                 }
             };
         }
@@ -2041,6 +2160,7 @@ export const DetailsPage: React.FC = () => {
                     <option className="bg-gray-800" value="supplier_dynamics">Динамика поставщиков (Стек)</option>
                     <option className="bg-gray-800" value="period_comparison">Сравнение периодов (Рядом)</option>
                     <option className="bg-gray-800" value="period_comparison_horizontal">Сравнение периодов (Горизонт)</option>
+                    <option className="bg-gray-800" value="kpi_broken_ozon_yandex">KPI Брака (Бой Озон Яндекс %)</option>
                     <option className="bg-gray-800" value="defect_distribution">Распределение дефектов (Пай)</option>
                     <option className="bg-gray-800" value="supplier_distribution">Распределение поставщиков (Пай)</option>
                     <option className="bg-gray-800" value="nomenclature_distribution">Топ номенклатур (Пай)</option>

@@ -108,7 +108,7 @@ export const parseFile = (file: File): Promise<ReportData> => {
             return newRow as RawDataRow;
         });
 
-        const reportMonth = extractMonth(file.name);
+        const reportMonth = extractMonth(file.name, normalizedJsonData);
         console.log("PROCESSOR: Extracted month:", reportMonth);
 
         const normalizedData = normalizeData(normalizedJsonData, reportMonth);
@@ -139,18 +139,58 @@ export const parseFile = (file: File): Promise<ReportData> => {
   });
 };
 
-const extractMonth = (fileName: string): string => {
+const extractMonth = (fileName: string, data?: RawDataRow[]): string => {
   const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
   const monthsLower = months.map(m => m.toLowerCase());
   const englishMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
   
   const lower = fileName.toLowerCase();
   
-  // Try to find month and year in the filename
-  let year = new Date().getFullYear().toString();
-  const yearMatch = lower.match(/\b(20\d{2})\b/);
-  if (yearMatch) {
-    year = yearMatch[1];
+  // 1. Try to find year in the data first (more reliable)
+  let year = '';
+  if (data && data.length > 0) {
+    for (let i = 0; i < Math.min(data.length, 50); i++) {
+      const row = data[i];
+      for (const val of Object.values(row)) {
+        const strVal = String(val);
+        const dateMatch = strVal.match(/\b(202\d)\b/) || strVal.match(/\d{2}\.\d{2}\.(\d{2,4})/);
+        if (dateMatch) {
+          const matched = dateMatch[1] || dateMatch[0];
+          if (matched.length === 2) year = `20${matched}`;
+          else if (matched.length === 4) year = matched;
+          if (year) break;
+        }
+      }
+      if (year) break;
+    }
+  }
+
+  // 2. Try to find year in the filename if not found in data
+  if (!year) {
+    const yearMatch = lower.match(/\b(20\d{2})\b/);
+    if (yearMatch) {
+      year = yearMatch[1];
+    }
+  }
+
+  // 3. Fallback year logic
+  if (!year) {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-11
+    
+    // If we find a month name in the filename, and it's later than the current month, 
+    // it's likely from last year (e.g., it's Feb 2026, filename says "December" -> 2025)
+    year = currentYear.toString();
+    
+    for (let i = 0; i < monthsLower.length; i++) {
+        if (lower.includes(monthsLower[i]) || lower.includes(englishMonths[i])) {
+            if (i > currentMonth) {
+                year = (currentYear - 1).toString();
+            }
+            break;
+        }
+    }
   }
 
   // Check for month name in Russian
