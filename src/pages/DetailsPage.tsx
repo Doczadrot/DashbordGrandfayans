@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore';
 import { parseFile } from '../utils/dataProcessor';
 import { GlassCard } from '../components/UI/GlassCard';
 import { IOSButton } from '../components/UI/IOSButton';
-import { ArrowLeft, XCircle, GripVertical, PieChart, Calendar, Package, TrendingUp } from 'lucide-react';
+import { ArrowLeft, XCircle, GripVertical, PieChart, Calendar, Package, TrendingUp, Download, RotateCcw } from 'lucide-react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
 import {
   Chart as ChartJS,
@@ -100,7 +100,7 @@ export const DetailsPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { data, salesData, supplierGroups, addData, addSalesData, updateMeta, meta } = useStore();
+  const { data, salesData, supplierGroups, addData, addSalesData, updateMeta, meta, resetStore } = useStore();
   const [isUploading, setIsUploading] = useState(false);
 
   const type = searchParams.get('type') as 'supplier' | 'reason' | 'description' | 'group' | null;
@@ -121,19 +121,7 @@ export const DetailsPage: React.FC = () => {
     if (!salesData || !type || !value) return [];
     const lowerValue = value.toLowerCase().trim();
     
-    // Normalize selected files for better matching
-    const normalizedSelectedFiles = selectedFiles.map(f => decodeURIComponent(f).toLowerCase().trim());
-    
     return salesData.filter(item => {
-        // Filter by files if specified in URL
-        if (normalizedSelectedFiles.length > 0 && item.fileName) {
-          const itemFileLower = item.fileName.toLowerCase().trim();
-          const hasMatch = normalizedSelectedFiles.some(f => 
-            itemFileLower.includes(f) || f.includes(itemFileLower)
-          );
-          if (!hasMatch) return false;
-        }
-
         // Sales data usually doesn't have 'reason' or 'description', 
         // but it has 'supplier' and 'nomenclature'.
         if (type === 'supplier') return item.supplier?.toLowerCase().trim() === lowerValue;
@@ -144,10 +132,10 @@ export const DetailsPage: React.FC = () => {
         
         // If filtering by reason/description, sales data doesn't apply directly
         // but we might want to show total sales for the context of those defects.
-        // For now, return empty or all? Let's return all to show context.
+        // For now, return all for the supplier if we can find it, or just all.
         return true; 
     });
-  }, [salesData, type, value, supplierGroups, selectedFiles]);
+  }, [salesData, type, value, supplierGroups]);
 
   const handleSalesButtonClick = () => {
     fileInputRef.current?.click();
@@ -198,37 +186,34 @@ export const DetailsPage: React.FC = () => {
   const salesStats = useMemo(() => {
     const monthlySales: Record<string, number> = {};
     filteredSalesData.forEach(s => {
-        // Normalize month name to "Month Year" format if it's not already
+        // Normalize month name to "Month Year" format
         let monthKey = s.month;
         const monthsRu = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
         
-        // If s.month is just a month name (e.g. from filename), we might need to add year if missing
-        // but extractSalesData already tries to return "Month Year"
+        // Ensure monthKey has a year if it's just a month name
+        if (!monthKey.includes('20')) {
+            const year = new Date().getFullYear().toString();
+            monthKey = `${monthKey} ${year}`;
+        }
+        
         monthlySales[monthKey] = (monthlySales[monthKey] || 0) + s.quantity;
     });
     
-    // Calculate totals for months found in defects data too
-    if (mainFilteredData) {
-        const defectMonths = Array.from(new Set(mainFilteredData.map(d => d.reportMonth)));
-        defectMonths.forEach(m => {
-            if (!monthlySales[m]) monthlySales[m] = 0;
-        });
-    }
-
-    // Sort by date
+    // Sort by date correctly
     const sortedEntries = Object.entries(monthlySales).sort((a, b) => {
         const monthsRu = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
-        const parse = (s: string) => {
+        const parseDate = (s: string) => {
             const parts = s.split(' ');
             const m = monthsRu.indexOf(parts[0]);
-            const y = parseInt(parts[1] || '0');
-            return y * 12 + m;
+            const y = parseInt(parts[1] || '2025');
+            return y * 12 + (m === -1 ? 0 : m);
         };
-        return parse(a[0]) - parse(b[0]);
+        return parseDate(a[0]) - parseDate(b[0]);
     });
 
+    console.log("DETAILS: Calculated sales stats", sortedEntries);
     return Object.fromEntries(sortedEntries);
-  }, [filteredSalesData, mainFilteredData]);
+  }, [filteredSalesData]);
 
   const salesByNomenclature = useMemo(() => {
     if (!isOzonYandex) return {};
@@ -277,6 +262,14 @@ export const DetailsPage: React.FC = () => {
         } finally {
             setIsUploading(false);
         }
+    }
+  };
+
+  const handleReset = () => {
+    if (confirm('Вы уверены, что хотите сбросить все данные? Это действие нельзя отменить.')) {
+        resetStore();
+        addLog('Данные полностью сброшены');
+        navigate('/dashboard');
     }
   };
 
@@ -487,7 +480,21 @@ export const DetailsPage: React.FC = () => {
     // Allow for all types, not just 'group'
     if (!data) return null;
     
-    const months = Array.from(new Set(mainFilteredData.map(d => d.reportMonth))).sort();
+    // Include all available months from both defects and sales
+    const months = Array.from(new Set([
+        ...mainFilteredData.map(d => d.reportMonth),
+        ...filteredSalesData.map(s => s.month)
+    ])).sort((a, b) => {
+        const monthsRu = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+        const parse = (s: string) => {
+            const parts = s.split(' ');
+            const m = monthsRu.indexOf(parts[0]);
+            const y = parseInt(parts[1] || '0');
+            return y * 12 + m;
+        };
+        return parse(a) - parse(b);
+    });
+
     const colors = [
       '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
       '#FF9F40', '#E7E9ED', '#71B37C', '#E6A537', '#6F7F8F'
@@ -515,7 +522,7 @@ export const DetailsPage: React.FC = () => {
                     color: '#9ca3af', 
                     usePointStyle: true, 
                     padding: 20,
-                    font: { size: 16 } // Increased from 14 for better readability
+                    font: { size: 14 } 
                 }
             }
         },
@@ -535,8 +542,25 @@ export const DetailsPage: React.FC = () => {
             },
             y: { 
                 grid: { color: 'rgba(255,255,255,0.05)' },
-                ticks: { color: '#9ca3af' }
-            }
+                ticks: { color: '#9ca3af' },
+                title: {
+                    display: true,
+                    text: isOzonYandex ? 'Процент брака (%)' : 'Кол-во брака (шт)',
+                    color: '#9ca3af'
+                }
+            },
+            y1: isOzonYandex ? {
+                type: 'linear' as const,
+                display: true,
+                position: 'right' as const,
+                grid: { drawOnChartArea: false },
+                ticks: { color: '#36A2EB' },
+                title: {
+                    display: true,
+                    text: 'Кол-во продаж (шт)',
+                    color: '#36A2EB'
+                }
+            } : undefined
         }
     };
 
@@ -552,25 +576,52 @@ export const DetailsPage: React.FC = () => {
             const limit = showAllComparison ? 1000 : 5;
             const entities = getTopKeys(d => d[entityKey] || 'Неизвестно', limit); 
             
-            const datasets = months.map((month, index) => ({
-                label: month,
-                data: entities.map(entity => {
-                    const defects = mainFilteredData
-                        .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
-                        .reduce((sum, item) => sum + item.quantity, 0);
-                    
-                    if (isOzonYandex) {
-                        const sales = salesByNomenclature[month]?.[entity] || 0;
-                        const rate = sales > 0 ? (defects / sales) * 100 : 0;
-                        return parseFloat(rate.toFixed(2));
-                    }
-                    return defects;
-                }),
-                backgroundColor: colors[index % colors.length],
-                borderRadius: 4,
-                barPercentage: 0.7,
-                categoryPercentage: 0.8
-            }));
+            const datasets: any[] = [];
+            months.forEach((month, index) => {
+                if (isOzonYandex) {
+                    // 1. Rate Dataset (Left Y Axis)
+                    datasets.push({
+                        label: `${month} (% брака)`,
+                        yAxisID: 'y',
+                        data: entities.map(entity => {
+                            const defects = mainFilteredData
+                                .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
+                                .reduce((sum, item) => sum + item.quantity, 0);
+                            const sales = salesByNomenclature[month]?.[entity] || 0;
+                            const rate = sales > 0 ? (defects / sales) * 100 : 0;
+                            return parseFloat(rate.toFixed(2));
+                        }),
+                        backgroundColor: colors[index % colors.length],
+                        borderRadius: 4,
+                        barPercentage: 0.8,
+                        categoryPercentage: 0.8
+                    });
+                    // 2. Sales Dataset (Right Y Axis)
+                    datasets.push({
+                        label: `${month} (Продажи)`,
+                        yAxisID: 'y1',
+                        data: entities.map(entity => salesByNomenclature[month]?.[entity] || 0),
+                        backgroundColor: colors[index % colors.length] + '40', // Very transparent
+                        borderColor: colors[index % colors.length],
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        barPercentage: 0.8,
+                        categoryPercentage: 0.8
+                    });
+                } else {
+                    datasets.push({
+                        label: month,
+                        data: entities.map(entity => mainFilteredData
+                            .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
+                            .reduce((sum, item) => sum + item.quantity, 0)
+                        ),
+                        backgroundColor: colors[index % colors.length],
+                        borderRadius: 4,
+                        barPercentage: 0.7,
+                        categoryPercentage: 0.8
+                    });
+                }
+            });
 
             return {
                 type: 'bar',
@@ -584,30 +635,26 @@ export const DetailsPage: React.FC = () => {
                                 label: (ctx: any) => {
                                     const val = ctx.raw;
                                     const entity = ctx.label;
-                                    const month = ctx.dataset.label;
+                                    const datasetLabel = ctx.dataset.label;
+                                    const month = datasetLabel.split(' (')[0];
+                                    
                                     if (isOzonYandex) {
-                                        const defects = mainFilteredData
-                                            .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
-                                            .reduce((sum, item) => sum + item.quantity, 0);
-                                        const sales = salesByNomenclature[month]?.[entity] || 0;
-                                        return `${month}: ${val}% (Брак: ${defects} шт, Прод: ${sales} шт)`;
+                                        if (datasetLabel.includes('% брака')) {
+                                            const defects = mainFilteredData
+                                                .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
+                                                .reduce((sum, item) => sum + item.quantity, 0);
+                                            const sales = salesByNomenclature[month]?.[entity] || 0;
+                                            return `${month} % брака: ${val}% (Брак: ${defects} шт, Прод: ${sales} шт)`;
+                                        } else {
+                                            return `${month} Продажи: ${val} шт.`;
+                                        }
                                     }
                                     return `${month}: ${val} шт.`;
                                 }
                             }
                         }
                     },
-                    scales: {
-                        ...commonOptions.scales,
-                        y: {
-                            ...commonOptions.scales.y,
-                            title: {
-                                display: true,
-                                text: isOzonYandex ? 'Процент брака (%)' : 'Кол-во брака (шт)',
-                                color: '#9ca3af'
-                            }
-                        }
-                    }
+                    scales: commonOptions.scales
                 }
             };
         }
@@ -617,25 +664,38 @@ export const DetailsPage: React.FC = () => {
             const limit = showAllComparison ? 1000 : 10;
             const entities = getTopKeys(d => d[entityKey] || 'Неизвестно', limit); 
             
-            const datasets = months.map((month, index) => ({
-                label: month,
-                data: entities.map(entity => {
-                    const defects = mainFilteredData
-                        .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
-                        .reduce((sum, item) => sum + item.quantity, 0);
-                    
-                    if (isOzonYandex) {
-                        const sales = salesByNomenclature[month]?.[entity] || 0;
-                        const rate = sales > 0 ? (defects / sales) * 100 : 0;
-                        return parseFloat(rate.toFixed(2));
-                    }
-                    return defects;
-                }),
-                backgroundColor: colors[index % colors.length],
-                borderRadius: 4,
-                barPercentage: 0.7,
-                categoryPercentage: 0.8
-            }));
+            const datasets: any[] = [];
+            months.forEach((month, index) => {
+                if (isOzonYandex) {
+                    // Horizontal doesn't play well with dual X-axis for bars in Chart.js easily 
+                    // without complex configuration. Let's keep it simple for now or skip sales in horizontal.
+                    // Actually, let's include it.
+                    datasets.push({
+                        label: `${month} (% брака)`,
+                        xAxisID: 'x', // For horizontal, scales are flipped
+                        data: entities.map(entity => {
+                            const defects = mainFilteredData
+                                .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
+                                .reduce((sum, item) => sum + item.quantity, 0);
+                            const sales = salesByNomenclature[month]?.[entity] || 0;
+                            const rate = sales > 0 ? (defects / sales) * 100 : 0;
+                            return parseFloat(rate.toFixed(2));
+                        }),
+                        backgroundColor: colors[index % colors.length],
+                        borderRadius: 4,
+                    });
+                } else {
+                    datasets.push({
+                        label: month,
+                        data: entities.map(entity => mainFilteredData
+                            .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
+                            .reduce((sum, item) => sum + item.quantity, 0)
+                        ),
+                        backgroundColor: colors[index % colors.length],
+                        borderRadius: 4,
+                    });
+                }
+            });
 
             return {
                 type: 'bar',
@@ -650,7 +710,8 @@ export const DetailsPage: React.FC = () => {
                                 label: (ctx: any) => {
                                     const val = ctx.raw;
                                     const entity = ctx.label;
-                                    const month = ctx.dataset.label;
+                                    const datasetLabel = ctx.dataset.label;
+                                    const month = datasetLabel.split(' (')[0];
                                     if (isOzonYandex) {
                                         const defects = mainFilteredData
                                             .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
@@ -664,11 +725,10 @@ export const DetailsPage: React.FC = () => {
                         }
                     },
                     scales: {
+                        ...commonOptions.scales,
                         x: { 
                             ...commonOptions.scales.x, 
                             stacked: false,
-                            grid: { color: 'rgba(255,255,255,0.05)' },
-                            ticks: { color: '#e5e7eb' },
                             title: {
                                 display: true,
                                 text: isOzonYandex ? 'Процент брака (%)' : 'Кол-во брака (шт)',
@@ -678,15 +738,6 @@ export const DetailsPage: React.FC = () => {
                         y: { 
                             ...commonOptions.scales.y, 
                             stacked: false,
-                            grid: { display: false },
-                            ticks: { 
-                                color: '#fff',
-                                font: { size: 10 },
-                                callback: function(val: any) {
-                                    const label = this.getLabelForValue(val as number);
-                                    return label.length > 25 ? label.substr(0, 25) + '...' : label;
-                                }
-                            }
                         }
                     }
                 }
@@ -943,34 +994,52 @@ export const DetailsPage: React.FC = () => {
 
   // 2. Table Filter (Main + Local Interaction)
   const tableData = useMemo(() => {
-    if (!localFilter) return mainFilteredData;
+    let filtered = mainFilteredData;
     
-    // Helper to check for "empty" values
-    const isEmpty = (val: any) => !val || val === 'Неизвестно' || val === 'Не указано';
+    if (localFilter) {
+      // Helper to check for "empty" values
+      const isEmpty = (val: any) => !val || val === 'Неизвестно' || val === 'Не указано';
 
-    return mainFilteredData.filter(item => {
-      const filterValue = localFilter.value;
-      const isSpecialValue = filterValue === 'Неизвестно' || filterValue === 'Не указано' || filterValue === 'Другое';
+      filtered = mainFilteredData.filter(item => {
+        const filterValue = localFilter.value;
+        const isSpecialValue = filterValue === 'Неизвестно' || filterValue === 'Не указано' || filterValue === 'Другое';
 
-      if (localFilter.type === 'description') {
-        if (isSpecialValue) {
-          // If filtering by "Other", we need to know what "Other" means in context of the chart it came from
-          // But for "Unknown"/"Not specified", we just check empty
-          return isEmpty(item.defectDescription);
+        if (localFilter.type === 'description') {
+          if (isSpecialValue) {
+            // If filtering by "Other", we need to know what "Other" means in context of the chart it came from
+            // But for "Unknown"/"Not specified", we just check empty
+            return isEmpty(item.defectDescription);
+          }
+          return item.defectDescription === filterValue;
         }
-        return item.defectDescription === filterValue;
-      }
-      if (localFilter.type === 'supplier') {
-        if (isSpecialValue) return isEmpty(item.supplier);
-        return item.supplier === filterValue;
-      }
-      if (localFilter.type === 'nomenclature') {
-        if (isSpecialValue) return isEmpty(item.nomenclature);
-        return item.nomenclature === filterValue;
-      }
-      return true;
-    });
-  }, [mainFilteredData, localFilter]);
+        if (localFilter.type === 'supplier') {
+          if (isSpecialValue) return isEmpty(item.supplier);
+          return item.supplier === filterValue;
+        }
+        if (localFilter.type === 'nomenclature') {
+          if (isSpecialValue) return isEmpty(item.nomenclature);
+          return item.nomenclature === filterValue;
+        }
+        return true;
+      });
+    }
+
+    // Aggregation for Ozon/Yandex (Marketplace mode)
+    if (isOzonYandex) {
+        const grouped: Record<string, any> = {};
+        filtered.forEach(item => {
+            const key = `${item.reportMonth}_${item.nomenclature}`;
+            if (!grouped[key]) {
+                grouped[key] = { ...item };
+            } else {
+                grouped[key].quantity += item.quantity;
+            }
+        });
+        return Object.values(grouped);
+    }
+
+    return filtered;
+  }, [mainFilteredData, localFilter, isOzonYandex]);
 
   // 3. Comparison Data (Time Series) or Grouped Supplier Data
   const comparisonData = useMemo(() => {
@@ -1780,6 +1849,14 @@ export const DetailsPage: React.FC = () => {
             )}
             
             <IOSButton 
+                onClick={handleReset} 
+                variant="secondary" 
+                className="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30"
+            >
+                <RotateCcw size={18} className="mr-2" /> Сброс
+            </IOSButton>
+            
+            <IOSButton 
                 onClick={handleSalesButtonClick} 
                 variant="primary" 
                 className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
@@ -1941,7 +2018,7 @@ export const DetailsPage: React.FC = () => {
           <div className="mb-4 flex flex-col justify-between gap-2">
             <div>
                 <h3 className="text-lg font-bold text-white mb-1">
-                    Сравнительный анализ
+                    Сравнительный анализ (показатель качества)
                 </h3>
                 <p className="text-gray-500 text-sm">Выберите тип диаграммы</p>
             </div>

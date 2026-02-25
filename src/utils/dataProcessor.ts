@@ -11,7 +11,24 @@ export const parseFile = (file: File): Promise<ReportData> => {
         console.log("PROCESSOR: File read as array buffer, size:", data instanceof ArrayBuffer ? data.byteLength : 'N/A');
         
         // Force UTF-8 (65001) to handle Cyrillic correctly in CSVs/TXT without BOM
-        const workbook = XLSX.read(data, { type: 'array', codepage: 65001 });
+        // Use codepage 1251 for Cyrillic CSVs if they are not UTF-8
+        let workbook;
+        try {
+            // Try to read with UTF-8 first
+            workbook = XLSX.read(data, { type: 'array', codepage: 65001 });
+            
+            // Simple heuristic to check if encoding is wrong (lots of replacement characters or nonsense)
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const csvContent = XLSX.utils.sheet_to_csv(firstSheet);
+            if (csvContent.includes('�') || /[^а-яёА-ЯЁa-zA-Z0-9\s.,;:"'()!?-]/.test(csvContent.slice(0, 100))) {
+                console.log("PROCESSOR: Potential encoding issue with UTF-8, trying Windows-1251...");
+                workbook = XLSX.read(data, { type: 'array', codepage: 1251 });
+            }
+        } catch (e) {
+            console.log("PROCESSOR: UTF-8 read failed, falling back to Windows-1251");
+            workbook = XLSX.read(data, { type: 'array', codepage: 1251 });
+        }
+        
         console.log("PROCESSOR: XLSX workbook read, sheets:", workbook.SheetNames);
         
         const firstSheetName = workbook.SheetNames[0];
@@ -123,29 +140,38 @@ export const parseFile = (file: File): Promise<ReportData> => {
 };
 
 const extractMonth = (fileName: string): string => {
-  const months = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+  const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+  const monthsLower = months.map(m => m.toLowerCase());
   const englishMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
   
   const lower = fileName.toLowerCase();
   
-  // Try to find month in the filename
-  for (let i = 0; i < months.length; i++) {
-    const m = months[i];
-    if (lower.includes(m)) return m.charAt(0).toUpperCase() + m.slice(1);
+  // Try to find month and year in the filename
+  let year = new Date().getFullYear().toString();
+  const yearMatch = lower.match(/\b(20\d{2})\b/);
+  if (yearMatch) {
+    year = yearMatch[1];
+  }
+
+  // Check for month name in Russian
+  for (let i = 0; i < monthsLower.length; i++) {
+    const m = monthsLower[i];
+    if (lower.includes(m)) return `${months[i]} ${year}`;
   }
   
+  // Check for month name in English
   for (let i = 0; i < englishMonths.length; i++) {
     const m = englishMonths[i];
-    const ruM = months[i];
-    if (lower.includes(m)) return ruM.charAt(0).toUpperCase() + ruM.slice(1);
+    if (lower.includes(m)) return `${months[i]} ${year}`;
   }
   
   // Try to find date pattern like 01.11 or 11.2024 or 01.11.2024
   const dateMatch = lower.match(/(\d{2})[./](\d{2})([./](\d{4}))?/);
   if (dateMatch) {
     const monthNum = parseInt(dateMatch[2]);
+    const matchedYear = dateMatch[4] || year;
     if (monthNum >= 1 && monthNum <= 12) {
-      return months[monthNum - 1].charAt(0).toUpperCase() + months[monthNum - 1].slice(1);
+      return `${months[monthNum - 1]} ${matchedYear}`;
     }
   }
   
@@ -157,45 +183,42 @@ const extractSalesData = (rawData: RawDataRow[], reportMonth: string, fileName: 
     // Detect if this is a sales file based on "Дата накладной" or specific MP format
     const hasDateColumn = rawData.length > 0 && Object.keys(rawData[0]).some(k => k.includes('Дата накладной'));
     
-    // MP Sales specific detection: check if first column contains date-like string and file has nomenclature
-    const isMPSales = !hasDateColumn && rawData.length > 0 && Object.keys(rawData[0]).some(k => {
-        const val = String(rawData[0][k]);
-        return /\d{2}\.\d{2}\.\d{4}/.test(val);
-    }) && Object.keys(rawData[0]).some(k => k.toLowerCase().includes('номенклатура') || k.toLowerCase().includes('название услуги'));
+    // MP Sales specific detection: check if any column contains date-like string and file has nomenclature
+    const isMPSales = !hasDateColumn && rawData.length > 0 && rawData.some(row => {
+        return Object.values(row).some(v => /\d{2}\.\d{2}\.\d{4}/.test(String(v)));
+    }) && rawData.some(row => {
+        return Object.keys(row).some(k => k.toLowerCase().includes('номенклатура') || k.toLowerCase().includes('название услуги') || k.toLowerCase().includes('товар'));
+    });
 
     if (!hasDateColumn && !isMPSales) return [];
 
     const salesRecords: SalesRecord[] = [];
     
     rawData.forEach(row => {
-        // Robust quantity parsing: handle spaces, commas, and default to 1 if missing
-        let qtyRaw = String(row['Количество'] || '').replace(/\s/g, '').replace(',', '.');
-        let qty = parseFloat(qtyRaw);
-        
-        // "1 строка = 1 штука" rule for marketplace sales files
-        if (isNaN(qty) || qty === 0) {
-            qty = 1;
-        }
+        // "1 строка = 1 штука" rule for marketplace sales files as requested by user
+        let qty = 1;
 
-        const nomenclature = String(row['Список товаров или название услуги'] || row['Номенклатура'] || '');
+        const nomenclature = String(row['Список товаров или название услуги'] || row['Номенклатура'] || row['Товар'] || '');
         
         // Try multiple supplier/marketplace column names
         let supplier = String(row['Контрагент'] || row['Поставщик'] || row['Маркетплейс'] || 'Неизвестно');
         
-        // Map marketplace names to standard categories if needed
+        // Map marketplace names to standard categories
         const lowerSupplier = supplier.toLowerCase();
-        if (lowerSupplier.includes('интернет решения') || lowerSupplier.includes('ozon')) {
+        const lowerFileName = fileName.toLowerCase();
+        
+        if (lowerSupplier.includes('интернет решения') || lowerSupplier.includes('ozon') || lowerFileName.includes('ozon')) {
             supplier = 'Озон';
-        } else if (lowerSupplier.includes('яндекс') || lowerSupplier.includes('yandex')) {
+        } else if (lowerSupplier.includes('яндекс') || lowerSupplier.includes('yandex') || lowerFileName.includes('yandex')) {
             supplier = 'Яндекс';
-        } else if (lowerSupplier.includes('вайлдберриз') || lowerSupplier.includes('wildberries') || lowerSupplier.includes('рвб')) {
+        } else if (lowerSupplier.includes('вайлдберриз') || lowerSupplier.includes('wildberries') || lowerSupplier.includes('рвб') || lowerFileName.includes('wb')) {
             supplier = 'Вайлдберриз';
         }
         
         // Use the actual date from the file if available, or fallback to reportMonth
         let month = reportMonth;
         
-        // Search for date in any column if 'Дата накладной' is missing or empty
+        // Search for date in any column
         const dateVal = row['Дата накладной'] || Object.values(row).find(v => /\d{2}\.\d{2}\.\d{4}/.test(String(v)));
         
         if (dateVal) {
@@ -205,11 +228,12 @@ const extractSalesData = (rawData: RawDataRow[], reportMonth: string, fileName: 
                 const m = parseInt(match[2]);
                 const y = match[3];
                 const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+                // Format: "Month Year" for consistent display
                 month = `${months[m-1]} ${y}`;
             }
         }
         
-        if (nomenclature && nomenclature !== 'undefined' && nomenclature.trim() !== '') {
+        if (nomenclature && nomenclature !== 'undefined' && nomenclature.trim() !== '' && nomenclature !== 'Товар' && nomenclature !== 'Номенклатура') {
             salesRecords.push({
                 month: month,
                 quantity: qty,
