@@ -3,11 +3,13 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { DefectRecord, ParetoItem, DashboardStats, SupplierKPI } from '../types/data.types';
 import { calculatePareto, calculateKPI, parseFile } from '../utils/dataProcessor';
 import { ParetoChart } from '../components/Dashboard/ParetoChart';
+import { PPMChart } from '../components/Dashboard/PPMChart';
 import { FilePreview } from '../components/FileUpload/FilePreview';
 import { SupplierChart } from '../components/Dashboard/SupplierChart';
 import { DefectDescriptionChart } from '../components/Dashboard/DefectDescriptionChart';
 import { SupplierGroupCard } from '../components/Dashboard/SupplierGroupCard';
 import { AIChat } from '../components/Dashboard/AIChat';
+import { ArrivalPopup } from '../components/Arrival/ArrivalPopup';
 import { IOSButton } from '../components/UI/IOSButton';
 import { GlassCard } from '../components/UI/GlassCard';
 import { ArrowLeft, Plus, Filter, Check, Package, AlertTriangle, TrendingUp, Users, GripVertical, Wand2, Trash2, FileText } from 'lucide-react';
@@ -33,7 +35,8 @@ const defaultLayouts: any = {
       { i: 'chat', x: 8, y: 8, w: 4, h: 16, minW: 3, minH: 10 },
       { i: 'suppliers', x: 0, y: 24, w: 6, h: 16, minW: 4, minH: 10 },
       { i: 'defect_desc', x: 6, y: 24, w: 6, h: 16, minW: 4, minH: 10 },
-      { i: 'preview', x: 0, y: 40, w: 12, h: 14, minW: 6, minH: 10 },
+      { i: 'ppm', x: 0, y: 40, w: 12, h: 14, minW: 6, minH: 10 },
+      { i: 'preview', x: 0, y: 54, w: 12, h: 14, minW: 6, minH: 10 },
     ],
   md: [
     { i: 'writeoff_link', x: 0, y: 0, w: 5, h: 4, minW: 2, minH: 3 },
@@ -47,7 +50,8 @@ const defaultLayouts: any = {
     { i: 'chat', x: 0, y: 28, w: 10, h: 14, minW: 6, minH: 10 },
     { i: 'suppliers', x: 0, y: 42, w: 10, h: 16, minW: 6, minH: 10 },
     { i: 'defect_desc', x: 0, y: 58, w: 10, h: 16, minW: 6, minH: 10 },
-    { i: 'preview', x: 0, y: 74, w: 10, h: 16, minW: 6, minH: 10 },
+    { i: 'ppm', x: 0, y: 74, w: 10, h: 14, minW: 6, minH: 10 },
+    { i: 'preview', x: 0, y: 88, w: 10, h: 14, minW: 6, minH: 10 },
   ],
   sm: [
     { i: 'writeoff_link', x: 0, y: 0, w: 6, h: 4, minW: 2, minH: 3 },
@@ -61,7 +65,8 @@ const defaultLayouts: any = {
     { i: 'chat', x: 0, y: 44, w: 6, h: 16, minW: 3, minH: 10 },
     { i: 'suppliers', x: 0, y: 60, w: 6, h: 16, minW: 3, minH: 10 },
     { i: 'defect_desc', x: 0, y: 76, w: 6, h: 16, minW: 3, minH: 10 },
-    { i: 'preview', x: 0, y: 92, w: 6, h: 18, minW: 3, minH: 10 },
+    { i: 'ppm', x: 0, y: 92, w: 6, h: 14, minW: 3, minH: 10 },
+    { i: 'preview', x: 0, y: 106, w: 6, h: 14, minW: 3, minH: 10 },
   ],
 };
 
@@ -82,9 +87,11 @@ export const Dashboard: React.FC = () => {
     autoClassifySuppliers, 
     resetStore, 
     supplierGroups, 
-    updateSupplierGroup 
+    updateSupplierGroup,
+    arrivalData
   } = useStore();
   const [isUploading, setIsUploading] = useState(false);
+  const [isArrivalPopupOpen, setIsArrivalPopupOpen] = useState(false);
 
   // Initialize store from location.state if store is empty but location has data (e.g., initial load)
   React.useEffect(() => {
@@ -196,55 +203,109 @@ export const Dashboard: React.FC = () => {
   }, [data, supplierGroups, updateSupplierGroup]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-        console.log("DASHBOARD: File upload started", e.target.files[0].name);
-        setIsUploading(true);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    const fileArray = Array.from(files);
+    let successCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
+
+    // Предотвращаем повторную загрузку тех же файлов (имя + размер)
+    const STORAGE_KEY = 'uploaded-files-v1';
+    let storedSignatures: string[] = [];
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        storedSignatures = JSON.parse(raw);
+      }
+    } catch (err) {
+      console.error('DASHBOARD: Error reading uploaded files from storage', err);
+    }
+    const uploadedSet = new Set(storedSignatures);
+    const newUploadedSet = new Set(uploadedSet);
+
+    // Блокируем взаимодействие и показываем индикатор загрузки
+    try {
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
         try {
-            const newFile = e.target.files[0];
-            console.log("DASHBOARD: Calling parseFile...");
-            const result = await parseFile(newFile);
-            console.log("DASHBOARD: parseFile result:", {
-                recordsCount: result.records?.length,
-                salesCount: result.sales?.length,
-                fileName: result.fileName,
-                reportMonth: result.reportMonth
-            });
-            
-            if (result.sales && result.sales.length > 0) {
-                console.log("DASHBOARD: Adding sales data to store...");
-                addSalesData(result.sales);
-            }
+          const signature = `${file.name}|${file.size}`;
+          if (uploadedSet.has(signature)) {
+            console.warn(`DASHBOARD: Skipping already uploaded file: ${file.name}`);
+            errorCount++;
+            errors.push(`${file.name}: файл уже был загружен ранее и будет пропущен.`);
+            continue;
+          }
 
-            if (result.records && result.records.length > 0) {
-                console.log("DASHBOARD: Adding records to store...");
-                addData(result.records);
-            }
-            
-            // Update meta to reflect multiple files
-            console.log("DASHBOARD: Updating meta...");
-            const currentMonths = meta.reportMonth ? meta.reportMonth.split(' / ').map(m => m.trim()) : [];
-            if (!currentMonths.includes(result.reportMonth)) {
-                currentMonths.push(result.reportMonth);
-            }
-            const newReportMonth = currentMonths.sort().join(' / ');
+          console.log(`DASHBOARD: Processing file ${i + 1}/${fileArray.length}: ${file.name}`);
+          const result = await parseFile(file);
+          console.log("DASHBOARD: parseFile result:", {
+            recordsCount: result.records?.length,
+            salesCount: result.sales?.length,
+            fileName: result.fileName,
+            reportMonth: result.reportMonth
+          });
+          
+          if (result.sales && result.sales.length > 0) {
+            console.log("DASHBOARD: Adding sales data to store...");
+            addSalesData(result.sales);
+          }
 
-            const currentFiles = meta.fileName ? meta.fileName.split(', ').map(f => f.trim()) : [];
-            if (!currentFiles.includes(result.fileName)) {
-                currentFiles.push(result.fileName);
-            }
-            const newFileName = currentFiles.join(', ');
+          if (result.records && result.records.length > 0) {
+            console.log("DASHBOARD: Adding records to store...");
+            addData(result.records);
+          }
+          
+          // Update meta to reflect multiple files
+          const currentMonths = meta.reportMonth ? meta.reportMonth.split(' / ').map(m => m.trim()) : [];
+          if (!currentMonths.includes(result.reportMonth)) {
+            currentMonths.push(result.reportMonth);
+          }
+          const newReportMonth = currentMonths.sort().join(' / ');
 
-            updateMeta({
-                fileName: newFileName,
-                reportMonth: newReportMonth
-            });
-            console.log("DASHBOARD: File upload successful");
+          const currentFiles = meta.fileName ? meta.fileName.split(', ').map(f => f.trim()) : [];
+          if (!currentFiles.includes(result.fileName)) {
+            currentFiles.push(result.fileName);
+          }
+          const newFileName = currentFiles.join(', ');
+
+          updateMeta({
+            fileName: newFileName,
+            reportMonth: newReportMonth
+          });
+          
+          successCount++;
+          newUploadedSet.add(signature);
         } catch (error) {
-            console.error("DASHBOARD: File upload FAILED:", error);
-            alert("Ошибка загрузки файла: " + (error instanceof Error ? error.message : String(error)));
-        } finally {
-            setIsUploading(false);
+          console.error(`DASHBOARD: File upload FAILED for ${file.name}:`, error);
+          errorCount++;
+          errors.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
+      }
+
+      // Показываем результат загрузки
+      if (successCount > 0 && errorCount === 0) {
+        alert(`Успешно загружено файлов: ${successCount}`);
+      } else if (successCount > 0 && errorCount > 0) {
+        alert(`Загружено: ${successCount}, Ошибок: ${errorCount}\n\n${errors.join('\n')}`);
+      } else {
+        alert(`Ошибка загрузки всех файлов:\n\n${errors.join('\n')}`);
+      }
+
+      // Сохраняем список загруженных файлов
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(newUploadedSet)));
+      } catch (err) {
+        console.error('DASHBOARD: Error saving uploaded files to storage', err);
+      }
+    } finally {
+      setIsUploading(false);
+      // Сбрасываем значение input, чтобы можно было загрузить те же файлы снова
+      if (e.target) {
+        e.target.value = '';
+      }
     }
   };
 
@@ -398,6 +459,13 @@ export const Dashboard: React.FC = () => {
                 onClick={() => {
                   if (window.confirm('Вы уверены, что хотите удалить все загруженные данные? Это действие нельзя отменить.')) {
                      resetStore();
+                     // Также очищаем список уже загруженных файлов,
+                     // чтобы их можно было загрузить повторно после полного сброса
+                     try {
+                       localStorage.removeItem('uploaded-files-v1');
+                     } catch (err) {
+                       console.error('DASHBOARD: Error clearing uploaded files storage on reset', err);
+                     }
                   }
                 }}
                 title="Сброс всех данных"
@@ -657,7 +725,7 @@ export const Dashboard: React.FC = () => {
              <IOSButton 
                 variant="secondary"
                 className="!py-3 !px-6 text-lg flex items-center gap-2 bg-white/5 hover:bg-white/10"
-                onClick={() => alert("Функционал загрузки приходов будет реализован позже")}
+                onClick={() => setIsArrivalPopupOpen(true)}
              >
                 <Package size={16} />
                 <span>Приходы</span>
@@ -668,7 +736,8 @@ export const Dashboard: React.FC = () => {
              </div>
              <div className="relative">
                 <input 
-                    type="file" 
+                    type="file"
+                    multiple 
                     id="add-file" 
                     className="hidden" 
                     accept=".xlsx,.xls,.csv,.txt" 
@@ -834,6 +903,11 @@ export const Dashboard: React.FC = () => {
             <FilePreview data={filteredData} />
           </div>
         </ResponsiveGridLayout>
+
+        <ArrivalPopup 
+          isOpen={isArrivalPopupOpen} 
+          onClose={() => setIsArrivalPopupOpen(false)} 
+        />
       </div>
     </div>
   );

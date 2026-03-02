@@ -6,6 +6,7 @@ import { GlassCard } from '../components/UI/GlassCard';
 import { IOSButton } from '../components/UI/IOSButton';
 import { ArrowLeft, XCircle, GripVertical, PieChart, Calendar, Package, TrendingUp, Download, RotateCcw } from 'lucide-react';
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy';
+import { PPMChart } from '../components/Dashboard/PPMChart';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -36,34 +37,108 @@ ChartJS.register(
 );
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
-const DETAILS_LAYOUT_STORAGE_KEY = 'details-layout-v1';
+const DETAILS_LAYOUT_STORAGE_KEY = 'details-layout-v3'; // ↑ новая версия layout'а, чтобы сбросить старые кривые сохранения
 const GROUP_LAYOUT_STORAGE_KEY = 'group-layout-v1';
 
-  const defaultLayouts = {
+// Базовые (эталонные) layout'ы для всех брейкпоинтов
+const defaultLayouts = {
   lg: [
-    { i: 'comparison', x: 0, y: 0, w: 12, h: 10 },
-    { i: 'breakdown_left', x: 0, y: 10, w: 6, h: 10 },
-    { i: 'breakdown_right', x: 6, y: 10, w: 6, h: 10 },
-    { i: 'breakdown_description_ozon', x: 0, y: 20, w: 12, h: 10 },
-    { i: 'sales_stats', x: 0, y: 30, w: 12, h: 4 },
-    { i: 'table', x: 0, y: 34, w: 12, h: 12 },
+    // Верхний ряд: сравнительный анализ + структура по описанию (Озон/Яндекс)
+    { i: 'comparison', x: 0, y: 0, w: 8, h: 10, minW: 6, minH: 8 },
+    // Структура дефектов (По описанию) и Виновники (Топ Поставщиков)
+    // — используем те же размеры, что и компактный виджет "Структура по описанию (из общего объема)"
+    { i: 'breakdown_left', x: 0, y: 10, w: 4, h: 10, minW: 3, minH: 8 },
+    { i: 'breakdown_right', x: 4, y: 10, w: 4, h: 10, minW: 3, minH: 8 },
+    // ОЗОН/Яндекс: компактный виджет структуры по описанию справа
+    { i: 'breakdown_description_ozon', x: 8, y: 0, w: 4, h: 10, minW: 3, minH: 8 },
+    // PPM по поставщикам — делаем в 2 раза ниже по сравнению с исходным вариантом
+    { i: 'ppm', x: 0, y: 20, w: 12, h: 7, minW: 8, minH: 5 },
+    // Продажи по месяцам – отдельная строка
+    { i: 'sales_stats', x: 0, y: 27, w: 12, h: 6, minW: 6, minH: 5 },
+    { i: 'table', x: 0, y: 33, w: 12, h: 12, minW: 8, minH: 8 },
   ],
   md: [
-    { i: 'comparison', x: 0, y: 0, w: 10, h: 10 },
-    { i: 'breakdown_left', x: 0, y: 10, w: 5, h: 10 },
-    { i: 'breakdown_right', x: 5, y: 10, w: 5, h: 10 },
-    { i: 'breakdown_description_ozon', x: 0, y: 20, w: 10, h: 10 },
-    { i: 'sales_stats', x: 0, y: 30, w: 10, h: 4 },
-    { i: 'table', x: 0, y: 34, w: 10, h: 12 },
+    { i: 'comparison', x: 0, y: 0, w: 7, h: 10, minW: 5, minH: 8 },
+    // Для среднего экрана тоже делаем компактные пончики
+    { i: 'breakdown_left', x: 0, y: 10, w: 3, h: 10, minW: 3, minH: 8 },
+    { i: 'breakdown_right', x: 3, y: 10, w: 3, h: 10, minW: 3, minH: 8 },
+    { i: 'breakdown_description_ozon', x: 7, y: 0, w: 3, h: 10, minW: 3, minH: 8 },
+    { i: 'sales_stats', x: 0, y: 20, w: 10, h: 6, minW: 5, minH: 5 },
+    { i: 'table', x: 0, y: 26, w: 10, h: 12, minW: 6, minH: 8 },
   ],
   sm: [
-    { i: 'comparison', x: 0, y: 0, w: 6, h: 10 },
-    { i: 'breakdown_left', x: 0, y: 10, w: 6, h: 10 },
-    { i: 'breakdown_right', x: 0, y: 20, w: 6, h: 10 },
-    { i: 'breakdown_description_ozon', x: 0, y: 30, w: 6, h: 10 },
-    { i: 'sales_stats', x: 0, y: 40, w: 6, h: 4 },
-    { i: 'table', x: 0, y: 44, w: 6, h: 12 },
+    // На мобильном сравнительный анализ и структура идут друг под другом
+    { i: 'comparison', x: 0, y: 0, w: 6, h: 9, minW: 4, minH: 7 },
+    { i: 'breakdown_description_ozon', x: 0, y: 9, w: 6, h: 9, minW: 4, minH: 7 },
+    { i: 'breakdown_left', x: 0, y: 18, w: 6, h: 9, minW: 4, minH: 7 },
+    { i: 'breakdown_right', x: 0, y: 27, w: 6, h: 9, minW: 4, minH: 7 },
+    { i: 'sales_stats', x: 0, y: 36, w: 6, h: 6, minW: 4, minH: 5 },
+    { i: 'table', x: 0, y: 42, w: 6, h: 12, minW: 4, minH: 8 },
   ],
+};
+
+// Хелпер: строим словарь дефолтных позиций по брейкпоинту и ключу виджета
+// чтобы можно было «нормализовать» сохранённый layout
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const buildDefaultLayoutMap = (layouts: any) => {
+  const map: Record<string, Record<string, any>> = {};
+  (['lg', 'md', 'sm'] as const).forEach((bp) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const arr: any[] = layouts[bp] || [];
+    map[bp] = {};
+    arr.forEach((item) => {
+      map[bp][item.i] = item;
+    });
+  });
+  return map;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const defaultLayoutMap = buildDefaultLayoutMap(defaultLayouts);
+
+// Нормализация layout'а:
+// 1) гарантируем наличие всех виджетов из дефолтного layout'а
+// 2) поджимаем w/h не ниже minW/minH и разумных значений, чтобы
+//    карточки не превращались в «узкие полоски» при первом рендере
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const normalizeLayouts = (savedLayouts: any | null): any => {
+  const result: Record<string, unknown[]> = {};
+
+  (['lg', 'md', 'sm'] as const).forEach((bp) => {
+    const defaultsForBp = defaultLayouts[bp];
+    const defaultsMapForBp = defaultLayoutMap[bp];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const savedForBp: any[] = (savedLayouts && Array.isArray(savedLayouts[bp])) ? savedLayouts[bp] : [];
+
+    const savedByKey = new Map<string, any>();
+    savedForBp.forEach((item) => {
+      if (item && item.i) {
+        savedByKey.set(item.i, item);
+      }
+    });
+
+    // Собираем итоговый список: строго в том же порядке, что и дефолтные
+    result[bp] = defaultsForBp.map((defItem) => {
+      const saved = savedByKey.get(defItem.i);
+      const base = saved ? { ...defItem, ...saved } : defItem;
+
+      const minW = base.minW ?? 2;
+      const minH = base.minH ?? 5;
+
+      const normalizedW = Math.max(base.w ?? defItem.w, minW);
+      const normalizedH = Math.max(base.h ?? defItem.h, minH);
+
+      return {
+        ...base,
+        w: normalizedW,
+        h: normalizedH,
+        minW,
+        minH,
+      };
+    });
+  });
+
+  return result;
 };
 
 const defaultGroupLayouts = {
@@ -100,7 +175,7 @@ export const DetailsPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { data, salesData, supplierGroups, addData, addSalesData, updateMeta, meta, resetStore, resetSalesData } = useStore();
+  const { data, salesData, supplierGroups, addData, addSalesData, updateMeta, meta, resetStore, resetSalesData, arrivalData } = useStore();
   const [isUploading, setIsUploading] = useState(false);
 
   const type = searchParams.get('type') as 'supplier' | 'reason' | 'description' | 'group' | null;
@@ -108,6 +183,7 @@ export const DetailsPage: React.FC = () => {
   const selectedFiles = searchParams.get('files')?.split(',') || [];
   const subType = searchParams.get('subType') as 'description' | 'supplier' | 'nomenclature' | null;
   const subValue = searchParams.get('subValue');
+  const monthFromUrl = searchParams.get('month');
 
   const isOzonYandex = useMemo(() => {
     if (!value) return false;
@@ -115,6 +191,8 @@ export const DetailsPage: React.FC = () => {
     const isGroupOzonYandex = type === 'group' && (lowerValue.includes('озон') || lowerValue.includes('яндекс'));
     return lowerValue.includes('озон') || lowerValue.includes('яндекс') || isGroupOzonYandex;
   }, [value, type]);
+
+  const isFactoryReason = type === 'reason' && value === 'Заводской брак';
 
   // 1. Filter Sales Data (Consistent with Dashboard.tsx and URL params)
   const filteredSalesData = useMemo(() => {
@@ -226,48 +304,107 @@ export const DetailsPage: React.FC = () => {
   }, [filteredSalesData, isOzonYandex]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-        setIsUploading(true);
-        try {
-            const newFile = e.target.files[0];
-            const result = await parseFile(newFile);
-            
-            if (result.records && result.records.length > 0) {
-                addData(result.records);
-            }
-            
-            if (result.sales && result.sales.length > 0) {
-                addSalesData(result.sales);
-            }
-            
-            // Update meta
-            const currentFiles = meta.fileName ? meta.fileName.split(', ').map(f => f.trim()) : [];
-            if (!currentFiles.includes(result.fileName)) {
-                currentFiles.push(result.fileName);
-            }
-            const newFileName = currentFiles.join(', ');
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-            updateMeta({
-                fileName: newFileName
-            });
-            
-            let message = `Загружено: ${result.records?.length || 0} строк брака`;
-            if (result.sales && result.sales.length > 0) {
-                message += ` и ${result.sales.length} строк продаж`;
-            }
-            alert(message);
+    setIsUploading(true);
+    const fileArray = Array.from(files);
+    let successCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
+
+    // Предотвращаем повторную загрузку тех же файлов (имя + размер)
+    const STORAGE_KEY = 'uploaded-files-v1';
+    let storedSignatures: string[] = [];
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        storedSignatures = JSON.parse(raw);
+      }
+    } catch (err) {
+      console.error('DETAILS: Error reading uploaded files from storage', err);
+    }
+    const uploadedSet = new Set(storedSignatures);
+    const newUploadedSet = new Set(uploadedSet);
+
+    // Блокируем взаимодействие и показываем индикатор загрузки
+    try {
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        try {
+          const signature = `${file.name}|${file.size}`;
+          if (uploadedSet.has(signature)) {
+            console.warn(`DETAILS: Skipping already uploaded file: ${file.name}`);
+            errorCount++;
+            errors.push(`${file.name}: файл уже был загружен ранее и будет пропущен.`);
+            continue;
+          }
+
+          console.log(`DETAILS: Processing file ${i + 1}/${fileArray.length}: ${file.name}`);
+          const result = await parseFile(file);
+          
+          if (result.records && result.records.length > 0) {
+            addData(result.records);
+          }
+          
+          if (result.sales && result.sales.length > 0) {
+            addSalesData(result.sales);
+          }
+          
+          // Update meta
+          const currentFiles = meta.fileName ? meta.fileName.split(', ').map(f => f.trim()) : [];
+          if (!currentFiles.includes(result.fileName)) {
+            currentFiles.push(result.fileName);
+          }
+          const newFileName = currentFiles.join(', ');
+
+          updateMeta({
+            fileName: newFileName
+          });
+          
+          successCount++;
+          newUploadedSet.add(signature);
         } catch (error) {
-            console.error("Failed to add file:", error);
-            alert("Ошибка загрузки файла");
-        } finally {
-            setIsUploading(false);
+          console.error(`DETAILS: File upload FAILED for ${file.name}:`, error);
+          errorCount++;
+          errors.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
+      }
+
+      // Показываем результат загрузки
+      if (successCount > 0 && errorCount === 0) {
+        alert(`Успешно загружено файлов: ${successCount}`);
+      } else if (successCount > 0 && errorCount > 0) {
+        alert(`Загружено: ${successCount}, Ошибок: ${errorCount}\n\n${errors.join('\n')}`);
+      } else {
+        alert(`Ошибка загрузки всех файлов:\n\n${errors.join('\n')}`);
+      }
+
+      // Сохраняем список загруженных файлов
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(newUploadedSet)));
+      } catch (err) {
+        console.error('DETAILS: Error saving uploaded files to storage', err);
+      }
+    } finally {
+      setIsUploading(false);
+      // Сбрасываем значение input, чтобы можно было загрузить те же файлы снова
+      if (e.target) {
+        e.target.value = '';
+      }
     }
   };
 
   const handleReset = () => {
     if (confirm('Вы уверены, что хотите сбросить только данные о продажах МП? Данные о браке останутся.')) {
         resetSalesData();
+        // При сбросе продаж также очищаем список загруженных файлов продаж,
+        // чтобы их можно было загрузить повторно
+        try {
+          localStorage.removeItem('uploaded-files-v1');
+        } catch (err) {
+          console.error('DETAILS: Error clearing uploaded files storage on reset', err);
+        }
         addLog('Данные о продажах МП сброшены');
         navigate('/dashboard');
     }
@@ -336,6 +473,7 @@ export const DetailsPage: React.FC = () => {
   };
   const [showAllComparison, setShowAllComparison] = useState(false);
   const [isExpanding, setIsExpanding] = useState(false);
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string | null>(monthFromUrl);
 
   const toggleShowAllComparison = () => {
     setIsExpanding(true);
@@ -351,18 +489,19 @@ export const DetailsPage: React.FC = () => {
       }
   }, [searchParams]);
 
-  // Load layouts
+  // Load layouts с нормализацией и защитой от «узких» сохранённых состояний
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [layouts, setLayouts] = useState<any>(() => {
     try {
       const saved = localStorage.getItem(DETAILS_LAYOUT_STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return normalizeLayouts(parsed);
       }
     } catch (e) {
       console.error('Error loading layout:', e);
     }
-    return defaultLayouts;
+    return normalizeLayouts(defaultLayouts);
   });
 
   // Load group layouts
@@ -379,11 +518,12 @@ export const DetailsPage: React.FC = () => {
     return defaultGroupLayouts;
   });
 
-  // Save layout callback
+  // Save layout callback (с нормализацией перед сохранением)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const onLayoutChange = (layout: any, allLayouts: any) => {
-    setLayouts(allLayouts);
-    localStorage.setItem(DETAILS_LAYOUT_STORAGE_KEY, JSON.stringify(allLayouts));
+    const normalized = normalizeLayouts(allLayouts);
+    setLayouts(normalized);
+    localStorage.setItem(DETAILS_LAYOUT_STORAGE_KEY, JSON.stringify(normalized));
   };
 
   // Save group layout callback
@@ -1111,15 +1251,31 @@ export const DetailsPage: React.FC = () => {
     });
   }, [showAllComparison, comparativeChartConfig, tileChartTypes]);
 
-  // 2. Table Filter (Main + Local Interaction)
+  // 2. Table Filter (Main + Local Interaction + Month from Comparison Chart)
+  // Функция для нормализации названия месяца (берет только первую часть)
+  const normalizeMonthForFilter = (monthStr: string): string => {
+    const parts = monthStr.trim().split(' ');
+    return parts[0];
+  };
+
   const tableData = useMemo(() => {
     let filtered = mainFilteredData;
     
+    // Фильтрация по месяцу - нормализуем месяц для сравнения
+    if (selectedMonthFilter) {
+      filtered = filtered.filter(item => {
+        const itemMonth = normalizeMonthForFilter(item.reportMonth || '');
+        const filterMonth = normalizeMonthForFilter(selectedMonthFilter);
+        return itemMonth === filterMonth;
+      });
+    }
+    
+    // Фильтрация по локальному фильтру (поставщик, описание, номенклатура)
     if (localFilter) {
       // Helper to check for "empty" values
       const isEmpty = (val: any) => !val || val === 'Неизвестно' || val === 'Не указано';
 
-      filtered = mainFilteredData.filter(item => {
+      filtered = filtered.filter(item => {
         const filterValue = localFilter.value;
         const isSpecialValue = filterValue === 'Неизвестно' || filterValue === 'Не указано' || filterValue === 'Другое';
 
@@ -1133,6 +1289,7 @@ export const DetailsPage: React.FC = () => {
         }
         if (localFilter.type === 'supplier') {
           if (isSpecialValue) return isEmpty(item.supplier);
+          // Точное совпадение поставщика
           return item.supplier === filterValue;
         }
         if (localFilter.type === 'nomenclature') {
@@ -1158,7 +1315,7 @@ export const DetailsPage: React.FC = () => {
     }
 
     return filtered;
-  }, [mainFilteredData, localFilter, isOzonYandex]);
+  }, [mainFilteredData, localFilter, selectedMonthFilter, isOzonYandex]);
 
   // 3. Comparison Data (Time Series) or Grouped Supplier Data
   const comparisonData = useMemo(() => {
@@ -1253,15 +1410,49 @@ export const DetailsPage: React.FC = () => {
     };
   }, [mainFilteredData, type]);
 
+  // Функция для фильтрации данных с учетом localFilter и selectedMonthFilter
+  const getFilteredDataForBreakdown = useMemo(() => {
+    let filtered = mainFilteredData;
+    
+    // Фильтрация по месяцу
+    if (selectedMonthFilter) {
+      filtered = filtered.filter(item => {
+        const itemMonth = normalizeMonthForFilter(item.reportMonth || '');
+        const filterMonth = normalizeMonthForFilter(selectedMonthFilter);
+        return itemMonth === filterMonth;
+      });
+    }
+    
+    // Фильтрация по локальному фильтру (поставщик, описание, номенклатура)
+    if (localFilter) {
+      const isEmpty = (val: any) => !val || val === 'Неизвестно' || val === 'Не указано';
+      filtered = filtered.filter(item => {
+        const filterValue = localFilter.value;
+        const isSpecialValue = filterValue === 'Неизвестно' || filterValue === 'Не указано' || filterValue === 'Другое';
+
+        if (localFilter.type === 'description') {
+          if (isSpecialValue) return isEmpty(item.defectDescription);
+          return item.defectDescription === filterValue;
+        }
+        if (localFilter.type === 'supplier') {
+          if (isSpecialValue) return isEmpty(item.supplier);
+          return item.supplier === filterValue;
+        }
+        if (localFilter.type === 'nomenclature') {
+          if (isSpecialValue) return isEmpty(item.nomenclature);
+          return item.nomenclature === filterValue;
+        }
+        return true;
+      });
+    }
+    
+    return filtered;
+  }, [mainFilteredData, localFilter, selectedMonthFilter]);
+
   // 4. Breakdown Data: Defect Descriptions (Normalized)
   const descriptionBreakdown = useMemo(() => {
-      // If viewing a group, show top suppliers as well (or descriptions?)
-      // The user wants 'columns diagram broken down by suppliers'. 
-      // We already did that in comparisonData for 'group'.
-      // Maybe here we can show Defect Descriptions for that group?
-      
       const counts: Record<string, number> = {};
-      mainFilteredData.forEach(item => {
+      getFilteredDataForBreakdown.forEach(item => {
           const key = item.defectDescription || 'Не указано';
           counts[key] = (counts[key] || 0) + item.quantity;
       });
@@ -1281,12 +1472,12 @@ export const DetailsPage: React.FC = () => {
             borderWidth: 0,
         }]
       };
-  }, [mainFilteredData]);
+  }, [getFilteredDataForBreakdown]);
 
   // 5. Breakdown Data: Suppliers (Culprits)
   const supplierBreakdown = useMemo(() => {
       const counts: Record<string, number> = {};
-      mainFilteredData.forEach(item => {
+      getFilteredDataForBreakdown.forEach(item => {
           const key = item.supplier || 'Неизвестно';
           counts[key] = (counts[key] || 0) + item.quantity;
       });
@@ -1306,12 +1497,12 @@ export const DetailsPage: React.FC = () => {
             borderWidth: 0,
         }]
       };
-  }, [mainFilteredData]);
+  }, [getFilteredDataForBreakdown]);
 
   // 6. Breakdown Data: Nomenclature (Models)
   const nomenclatureBreakdown = useMemo(() => {
       const counts: Record<string, number> = {};
-      mainFilteredData.forEach(item => {
+      getFilteredDataForBreakdown.forEach(item => {
           const key = item.nomenclature || 'Неизвестно';
           counts[key] = (counts[key] || 0) + item.quantity;
       });
@@ -1442,12 +1633,12 @@ export const DetailsPage: React.FC = () => {
       }
 
       if (chartType === 'period_comparison' || chartType === 'period_comparison_horizontal') {
-        if (isOzonYandex) {
-          setLocalFilter({ type: 'nomenclature', value: label });
-        } else if (type === 'supplier') {
-          setLocalFilter({ type: 'description', value: label });
-        } else {
-          setLocalFilter({ type: 'supplier', value: label });
+        const monthFromDataset = datasetLabel.includes(' (') 
+          ? datasetLabel.split(' (')[0].trim() 
+          : datasetLabel.trim();
+        if (monthFromDataset) {
+          setSelectedMonthFilter(monthFromDataset);
+          addLog(`Фильтр по месяцу: ${monthFromDataset}`);
         }
       } else if (chartType.includes('dynamics') || chartType.includes('trends')) {
         if (chartType.includes('supplier')) {
@@ -1522,7 +1713,27 @@ export const DetailsPage: React.FC = () => {
                 <h1 className="text-4xl font-black text-white uppercase tracking-wide mb-6">
                     ПОСТАВЩИКИ: {groupName}
                 </h1>
-                <div className="flex flex-wrap justify-center gap-4">
+                <div className="flex flex-wrap justify-center items-center gap-4">
+                    {(localFilter || selectedMonthFilter) && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            {localFilter && (
+                                <div className="flex items-center bg-blue-500/20 text-blue-300 px-3 py-1.5 rounded-full border border-blue-500/30">
+                                    <span className="mr-2 text-sm">Фильтр: {localFilter.value}</span>
+                                    <button onClick={() => setLocalFilter(null)} className="hover:text-white transition-colors">
+                                        <XCircle size={14} />
+                                    </button>
+                                </div>
+                            )}
+                            {selectedMonthFilter && (
+                                <div className="flex items-center bg-amber-500/20 text-amber-300 px-3 py-1.5 rounded-full border border-amber-500/30">
+                                    <span className="mr-2 text-sm">Месяц: {selectedMonthFilter}</span>
+                                    <button onClick={() => setSelectedMonthFilter(null)} className="hover:text-white transition-colors">
+                                        <XCircle size={14} />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <div className="px-4 py-2 bg-white/10 rounded-full border border-white/10 flex items-center gap-2 text-gray-200">
                          <span className="text-blue-400">📅</span>
                          <span>Периоды: {groupMetrics.monthRange}</span>
@@ -1536,7 +1747,8 @@ export const DetailsPage: React.FC = () => {
                          <span>Тип: Категория</span>
                     </div>
                     <input 
-                        type="file" 
+                        type="file"
+                        multiple 
                         ref={fileInputRef} 
                         onChange={handleFileUpload} 
                         className="hidden" 
@@ -1865,6 +2077,7 @@ export const DetailsPage: React.FC = () => {
                         <h3 className="text-lg font-bold text-white mb-4 pr-12">
                             Детальный список записей 
                             {localFilter && <span className="text-sm font-normal text-gray-400 ml-2">(Отфильтровано: {localFilter.value})</span>}
+                            {selectedMonthFilter && <span className="text-sm font-normal text-amber-400 ml-2">(Месяц: {selectedMonthFilter})</span>}
                         </h3>
                         <div className="flex-grow min-h-0 overflow-hidden">
                             {isSplitView ? (
@@ -1958,12 +2171,47 @@ export const DetailsPage: React.FC = () => {
         
         <div className="flex items-center space-x-4">
             {/* Active Filter Indicator */}
-            {localFilter && (
-                <div className="flex items-center bg-blue-500/20 text-blue-300 px-4 py-2 rounded-full border border-blue-500/30">
-                    <span className="mr-2 text-sm">Фильтр: {localFilter.value}</span>
-                    <button onClick={() => setLocalFilter(null)} className="hover:text-white transition-colors">
-                        <XCircle size={16} />
-                    </button>
+            {(localFilter || selectedMonthFilter) && (
+                <div className="flex flex-wrap items-center gap-2">
+                    {localFilter && (
+                        <div className={`flex items-center px-4 py-2 rounded-full border ${
+                            localFilter.type === 'supplier' 
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
+                                : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+                        }`}>
+                            <span className="mr-2 text-sm">
+                                {localFilter.type === 'supplier' ? 'Поставщик' : localFilter.type === 'description' ? 'Описание' : 'Номенклатура'}: {localFilter.value}
+                            </span>
+                            <button 
+                                onClick={() => {
+                                    setLocalFilter(null);
+                                    const newParams = new URLSearchParams(searchParams);
+                                    newParams.delete('subType');
+                                    newParams.delete('subValue');
+                                    navigate(`${location.pathname}?${newParams.toString()}`, { replace: false });
+                                }} 
+                                className="hover:text-white transition-colors"
+                            >
+                                <XCircle size={16} />
+                            </button>
+                        </div>
+                    )}
+                    {selectedMonthFilter && (
+                        <div className="flex items-center bg-amber-500/20 text-amber-300 px-4 py-2 rounded-full border border-amber-500/30">
+                            <span className="mr-2 text-sm">Месяц: {selectedMonthFilter}</span>
+                            <button 
+                                onClick={() => {
+                                    setSelectedMonthFilter(null);
+                                    const newParams = new URLSearchParams(searchParams);
+                                    newParams.delete('month');
+                                    navigate(`${location.pathname}?${newParams.toString()}`, { replace: false });
+                                }} 
+                                className="hover:text-white transition-colors"
+                            >
+                                <XCircle size={16} />
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
             
@@ -2018,8 +2266,8 @@ export const DetailsPage: React.FC = () => {
         isDraggable
       >
         {isOzonYandex && (
-          <div key="breakdown_description_ozon" className="h-full">
-            <GlassCard className="h-full p-6 relative flex flex-col">
+          <div key="breakdown_description_ozon" className="h-full min-h-[480px] relative z-10">
+            <GlassCard className="h-full min-h-[480px] p-6 relative flex flex-col overflow-visible">
               <div className="tile-drag-handle absolute top-3 right-3 z-10 p-2 rounded-lg bg-white/10 border border-white/10 text-gray-200 hover:bg-white/20 transition-colors cursor-grab active:cursor-grabbing">
                 <GripVertical size={16} />
               </div>
@@ -2040,7 +2288,7 @@ export const DetailsPage: React.FC = () => {
                   </select>
                 </div>
               </div>
-              <div className="flex-grow min-h-0 flex justify-center w-full relative">
+              <div className="flex-grow min-h-[400px] flex justify-center w-full relative">
                 {(() => {
                   const chartType = tileChartTypes['breakdown_description_ozon'] || 'doughnut';
                   const data = descriptionBreakdown;
@@ -2099,30 +2347,30 @@ export const DetailsPage: React.FC = () => {
           </div>
         )}
 
-        {/* Sales Stats Tile (Always visible if data exists) */}
-        {Object.entries(salesStats).length > 0 && (
-          <div key="sales_stats">
-              <GlassCard className="h-full p-6 flex flex-col justify-between relative">
+        {/* Sales Stats Tile - только для отчета \"Анализ причины\" по Бою ОЗОН/Яндекс */}
+        {type === 'reason' && isOzonYandex && Object.keys(salesStats).length > 0 && (
+          <div key="sales_stats" className="h-full min-h-[200px] relative z-10">
+              <GlassCard className="h-full min-h-[200px] p-6 flex flex-col justify-between relative">
                   <div className="tile-drag-handle absolute top-2 right-2 z-10 p-1 rounded bg-white/5 hover:bg-white/10 cursor-grab">
                       <GripVertical size={14} className="text-gray-400" />
                   </div>
                   <div className="flex items-start justify-between">
-                       <div>
+                       <div className="flex-1">
                            <p className="text-xs uppercase text-gray-400 font-bold mb-1">ПРОДАЖИ ПО МЕСЯЦАМ</p>
                            <div className="flex flex-wrap gap-4 mt-2">
-                               {Object.entries(salesStats).map(([month, qty]) => (
-                                   <div key={month} className="flex flex-col">
-                                       <span className="text-xs text-gray-400 font-medium">{month}</span>
-                                       <span className="text-2xl font-bold text-white">{qty.toLocaleString()} шт.</span>
-                                   </div>
-                               ))}
-                           </div>
+                                 {Object.entries(salesStats).map(([month, qty]) => (
+                                     <div key={month} className="flex flex-col">
+                                         <span className="text-xs text-gray-400 font-medium">{month}</span>
+                                         <span className="text-2xl font-bold text-white">{qty.toLocaleString()} шт.</span>
+                                     </div>
+                                 ))}
+                             </div>
                        </div>
-                       <div className="text-blue-400">
+                       <div className="text-blue-400 ml-4">
                           <TrendingUp size={32} strokeWidth={1.5} />
                        </div>
                   </div>
-                  <p className="text-sm text-gray-500">Объем продаж за активные месяцы</p>
+                  <p className="text-sm text-gray-500 mt-4">Объем продаж за активные месяцы</p>
               </GlassCard>
           </div>
         )}
@@ -2206,6 +2454,21 @@ export const DetailsPage: React.FC = () => {
                    type === 'group' ? 'Топ-10 дефектов' :
                    'Структура дефектов (По описанию)'}
               </h3>
+              {/* Индикаторы активных фильтров */}
+              {(localFilter || selectedMonthFilter) && (
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  {localFilter && (
+                    <div className="flex items-center bg-amber-500/20 text-amber-300 px-2 py-1 rounded-full border border-amber-500/30 text-xs">
+                      <span>{localFilter.type === 'supplier' ? 'Поставщик' : localFilter.type === 'description' ? 'Описание' : 'Номенклатура'}: {localFilter.value}</span>
+                    </div>
+                  )}
+                  {selectedMonthFilter && (
+                    <div className="flex items-center bg-amber-500/20 text-amber-300 px-2 py-1 rounded-full border border-amber-500/30 text-xs">
+                      <span>Месяц: {selectedMonthFilter}</span>
+                    </div>
+                  )}
+                </div>
+              )}
               <select 
                   value={tileChartTypes['breakdown_left'] || 'doughnut'}
                   onChange={(e) => setTileChartTypes(prev => ({...prev, breakdown_left: e.target.value}))}
@@ -2217,8 +2480,8 @@ export const DetailsPage: React.FC = () => {
                   <option className="bg-gray-800" value="polarArea">Полярная (PolarArea)</option>
               </select>
             </div>
-            <div className="flex-grow min-h-0 flex justify-center w-full relative">
-              {(() => {
+            <div className="flex-grow min-h-[400px] flex justify-center w-full relative">
+                {(() => {
                   const chartType = tileChartTypes['breakdown_left'] || 'doughnut';
                   const isDescription = type === 'description';
                   const data = isDescription ? supplierBreakdown : descriptionBreakdown;
@@ -2261,9 +2524,9 @@ export const DetailsPage: React.FC = () => {
           </div>
         )}
 
-        {/* Right Chart: Suppliers or Extra Info (Hide for Ozon/Yandex) */}
-        {/* For 'reason', show Suppliers. For 'description', maybe show nothing or Nomenclature? */}
-        {!isOzonYandex && (type === 'reason' || type === 'description') && (
+        {/* Right Chart: Suppliers or Extra Info */}
+        {/* Показываем только для заводского брака, чтобы на остальных под-дашбордах оставить одну структуру + таблицу */}
+        {!isOzonYandex && isFactoryReason && (
             <div key="breakdown_right" className="h-full">
             <GlassCard className="h-full p-6 relative flex flex-col">
             <div className="tile-drag-handle absolute top-3 right-3 z-10 p-2 rounded-lg bg-white/10 border border-white/10 text-gray-200 hover:bg-white/20 transition-colors cursor-grab active:cursor-grabbing">
@@ -2284,7 +2547,7 @@ export const DetailsPage: React.FC = () => {
                     <option className="bg-gray-800" value="polarArea">Полярная (PolarArea)</option>
                 </select>
             </div>
-            <div className="flex-grow min-h-0 flex justify-center w-full relative">
+            <div className="flex-grow min-h-[400px] flex justify-center w-full relative">
                 {(() => {
                     const chartType = tileChartTypes['breakdown_right'] || 'doughnut';
                     const data = type === 'description' ? nomenclatureBreakdown : supplierBreakdown;
@@ -2327,6 +2590,43 @@ export const DetailsPage: React.FC = () => {
             </div>
         )}
 
+        {/* PPM Widget - только для Заводской брак */}
+        {type === 'reason' && value === 'Заводской брак' && (
+          <div key="ppm" className="h-full">
+            <PPMChart 
+              defectData={mainFilteredData} 
+              arrivalData={arrivalData}
+              hasActiveFilters={!!(localFilter || selectedMonthFilter)}
+              onSupplierClick={(supplier, month) => {
+                // Устанавливаем фильтр по поставщику для таблицы и обновляем URL
+                setLocalFilter({ type: 'supplier', value: supplier });
+                const newParams = new URLSearchParams(searchParams);
+                newParams.set('subType', 'supplier');
+                newParams.set('subValue', supplier);
+                
+                // Устанавливаем фильтр по месяцу, если указан
+                if (month) {
+                  setSelectedMonthFilter(month);
+                  newParams.set('month', month);
+                }
+                
+                navigate(`${location.pathname}?${newParams.toString()}`, { replace: false });
+              }}
+              onResetFilter={() => {
+                // Сбрасываем все фильтры
+                setLocalFilter(null);
+                setSelectedMonthFilter(null);
+                // Удаляем параметры из URL
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete('subType');
+                newParams.delete('subValue');
+                newParams.delete('month');
+                navigate(`${location.pathname}?${newParams.toString()}`, { replace: false });
+              }}
+            />
+          </div>
+        )}
+
       {/* Row 3: Detailed List */}
       <div key="table" className="h-full">
       <GlassCard className="h-full p-6 relative flex flex-col">
@@ -2335,8 +2635,41 @@ export const DetailsPage: React.FC = () => {
         </div>
         <h3 className="text-lg font-bold text-white mb-4 pr-12">
             Детальный список записей 
-            {localFilter && <span className="text-sm font-normal text-gray-400 ml-2">(Отфильтровано: {localFilter.value})</span>}
         </h3>
+        {/* Отображение активных фильтров */}
+        {(localFilter || selectedMonthFilter) && (
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            {localFilter && (
+              <div className="flex items-center bg-blue-500/20 text-blue-300 px-3 py-1.5 rounded-full border border-blue-500/30 text-sm">
+                <span>Поставщик: {localFilter.value}</span>
+                <button 
+                  onClick={() => setLocalFilter(null)} 
+                  className="ml-2 hover:text-white transition-colors"
+                  title="Убрать фильтр по поставщику"
+                >
+                  <XCircle size={14} />
+                </button>
+              </div>
+            )}
+            {selectedMonthFilter && (
+              <div className="flex items-center bg-amber-500/20 text-amber-300 px-3 py-1.5 rounded-full border border-amber-500/30 text-sm">
+                <span>Месяц: {selectedMonthFilter}</span>
+                <button 
+                  onClick={() => {
+                    setSelectedMonthFilter(null);
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.delete('month');
+                    navigate(`${location.pathname}?${newParams.toString()}`, { replace: false });
+                  }} 
+                  className="ml-2 hover:text-white transition-colors"
+                  title="Убрать фильтр по месяцу"
+                >
+                  <XCircle size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="overflow-x-auto flex-grow min-h-0">
           <table className="w-full text-left text-sm text-gray-300">
             <thead className="text-xs uppercase bg-white/5 text-gray-400">

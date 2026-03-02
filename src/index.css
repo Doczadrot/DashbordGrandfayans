@@ -71,4 +71,15 @@
     width: 10px;
     height: 10px;
   }
+
+  /* Ensure grid items have proper height */
+  .react-grid-item {
+    height: 100% !important;
+  }
+
+  .react-grid-item > div {
+    height: 100% !important;
+    display: flex;
+    flex-direction: column;
+  }
 }

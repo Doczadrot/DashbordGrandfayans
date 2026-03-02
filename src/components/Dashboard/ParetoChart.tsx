@@ -13,7 +13,7 @@ import {
 } from 'chart.js';
 import { Chart } from 'react-chartjs-2';
 import { useNavigate } from 'react-router-dom';
-import { ParetoItem } from '../../types/data.types';
+import { ParetoItem, DefectRecord } from '../../types/data.types';
 import { GlassCard } from '../UI/GlassCard';
 import { GripVertical } from 'lucide-react';
 
@@ -136,8 +136,18 @@ export const ParetoChart: React.FC<ParetoChartProps> = ({ data, onDetailClick })
     };
   }, [data]);
 
+  const hideTooltip = () => {
+    const tooltipEl = document.getElementById('chartjs-tooltip');
+    if (tooltipEl) tooltipEl.style.opacity = '0';
+  };
+
+  React.useEffect(() => {
+    return () => hideTooltip();
+  }, []);
+
   const handleChartClick = (_event: unknown, elements: { index: number }[]) => {
     if (elements.length > 0) {
+      hideTooltip();
       const index = elements[0].index;
       // Get the original reason name from the data prop, assuming same order as chartData
       const originalReason = data[index].reason;

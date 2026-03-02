@@ -6,6 +6,16 @@ import { DetailsPage } from './pages/DetailsPage';
 import { WriteOffAnalysis } from './pages/WriteOffAnalysis';
 
 function App() {
+  // При каждом полном старте приложения очищаем список уже загруженных файлов,
+  // чтобы в dev/тестовой среде можно было повторно загружать те же файлы
+  React.useEffect(() => {
+    try {
+      localStorage.removeItem('uploaded-files-v1');
+    } catch (err) {
+      console.error('APP: Error clearing uploaded files storage on app start', err);
+    }
+  }, []);
+
   return (
     <Router>
       <Routes>
