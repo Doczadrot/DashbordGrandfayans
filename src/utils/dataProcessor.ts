@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { DefectRecord, ParetoItem, RawDataRow, SupplierKPI, ReportData, SalesRecord } from '../types/data.types';
+import { normalizeSupplierName } from './supplierAliases';
 
 export const parseFile = (file: File): Promise<ReportData> => {
   console.log("PROCESSOR: Starting parseFile for", file.name);
@@ -270,6 +271,9 @@ const extractSalesData = (rawData: RawDataRow[], reportMonth: string, fileName: 
         } else if (lowerSupplier.includes('вайлдберриз') || lowerSupplier.includes('wildberries') || lowerSupplier.includes('рвб') || lowerFileName.includes('wb')) {
             supplier = 'Вайлдберриз';
         }
+
+        // Нормализуем ФИО-поставщиков к юр.лицам (например, "Асланова ..." -> "ГЭОС")
+        supplier = normalizeSupplierName(supplier);
         
         // Use the actual date from the file if available, or fallback to reportMonth
         let month = reportMonth;
@@ -373,7 +377,7 @@ export const normalizeData = (rawData: RawDataRow[], reportMonth: string): Defec
       claimReason,
       originalClaimReason,
       defectDescription: String(row['Описание дефекта'] || ''),
-      supplier: String(row['Поставщик'] || 'Неизвестно'),
+      supplier: normalizeSupplierName(String(row['Поставщик'] || 'Неизвестно')),
     responsibility: String(row['Ответственность за брак'] || ''),
     warehouse: String(row['Склад обнаружения'] || ''),
     defectType: String(row['Вид дефекта'] || ''),

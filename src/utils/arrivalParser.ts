@@ -1,6 +1,7 @@
   // src/utils/arrivalParser.ts
 import * as XLSX from 'xlsx';
 import { ArrivalFile, ArrivalSupplier, ArrivalDocument } from '../types/arrival.types';
+import { normalizeSupplierName } from './supplierAliases';
 
 const generateId = () =>
   Math.random().toString(36).substring(2, 15) +
@@ -185,7 +186,7 @@ export const parseArrivalFile = async (file: File): Promise<ArrivalFile> => {
       }
 
       currentSupplier = {
-        supplier: cellA,
+        supplier: normalizeSupplierName(cellA),
         // Количество и объём из самой строки-поставщика (агрегат от 1С)
         totalQuantity: qty,
         totalVolume: volume,

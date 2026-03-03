@@ -26,6 +26,11 @@ pnpm-debug.log*
 *.swp
 *.swo
 
+# Data files
+*.xlsx
+*.xls
+*.csv
+
 # Logs
 logs
 *.log
