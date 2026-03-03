@@ -7,6 +7,11 @@ export interface WriteOffItem {
   defectSource?: string; // "Источник дефекта" (Col E)
   supplier?: string; // "Поставщик" (Col G)
   docReason?: string; // "Причина списания" (Col A from Group Header)
+  writeOffDocument?: string; // "Документ списания"
+  writeOffDate?: string; // Дата из документа списания (DD.MM.YYYY)
+  writeOffMonth?: string; // Месяц списания (например "Январь 2026")
+  warehouse?: string; // Склад
+  isFactoryDefect?: boolean; // Является ли заводским браком
 }
 
 export interface WriteOffGroup {

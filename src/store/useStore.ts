@@ -25,6 +25,7 @@ interface AppState {
   addData: (newData: DefectRecord[]) => void;
   addSalesData: (newSales: SalesRecord[]) => void;
   addWriteOffFile: (file: WriteOffFile) => void;
+  removeWriteOffFile: (id: string) => void;
   resetWriteOffData: () => void;
   addArrivalFile: (file: ArrivalFile) => void;  // ← новое
   removeArrivalFile: (id: string) => void;       // ← новое
@@ -83,6 +84,12 @@ export const useStore = create<AppState>()(
       addWriteOffFile: (file) => {
         console.log("STORE: Adding write-off file:", file.filename, "groups:", file.groups.length);
         set((state) => ({ writeOffData: [...state.writeOffData, file] }));
+      },
+      removeWriteOffFile: (id) => {
+        console.log("STORE: Removing write-off file with id:", id);
+        set((state) => ({
+          writeOffData: state.writeOffData.filter((f) => f.id !== id),
+        }));
       },
       resetWriteOffData: () => {
         console.log("STORE: Resetting write-off data");

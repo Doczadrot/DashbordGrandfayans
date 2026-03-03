@@ -4,6 +4,7 @@ import { Home } from './pages/Home';
 import { Dashboard } from './pages/Dashboard';
 import { DetailsPage } from './pages/DetailsPage';
 import { WriteOffAnalysis } from './pages/WriteOffAnalysis';
+import { WriteOffDetailsPage } from './pages/WriteOffDetailsPage';
 
 function App() {
   // При каждом полном старте приложения очищаем список уже загруженных файлов,
@@ -11,6 +12,7 @@ function App() {
   React.useEffect(() => {
     try {
       localStorage.removeItem('uploaded-files-v1');
+      localStorage.removeItem('uploaded-writeoff-files-v1');
     } catch (err) {
       console.error('APP: Error clearing uploaded files storage on app start', err);
     }
@@ -23,6 +25,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/details" element={<DetailsPage />} />
         <Route path="/writeoff" element={<WriteOffAnalysis />} />
+        <Route path="/writeoff/details" element={<WriteOffDetailsPage />} />
       </Routes>
     </Router>
   );

@@ -1,27 +1,65 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
 import { GlassCard } from '../components/UI/GlassCard';
 import { IOSButton } from '../components/UI/IOSButton';
-import { WriteOffChart } from '../components/WriteOff/WriteOffChart';
-import { OzonAnalysis } from '../components/Ozon/OzonAnalysis';
-import { SupplierAnalysis } from '../components/Supplier/SupplierAnalysis';
-import { WriteOffTable } from '../components/WriteOff/WriteOffTable';
-import { parseWriteOffFile } from '../utils/writeOffParser';
-import { ArrowLeft, Trash2, LayoutGrid, Upload, X, Download, FolderOpen } from 'lucide-react';
+import { MonthlyCharts } from '../components/WriteOff/MonthlyCharts';
+import { WriteOffPopup } from '../components/WriteOff/WriteOffPopup';
+import { parseWriteOffSalesFile, WriteOffSalesFile } from '../utils/writeOffSalesParser';
+import { WriteOffFile } from '../types/writeoff.types';
+import { ArrowLeft, Trash2, Upload, X, Download, FolderOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Responsive, useContainerWidth } from 'react-grid-layout';
-import type { Layout } from 'react-grid-layout';
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
+
+// Обертка для MonthlyCharts с обработкой ошибок
+const MonthlyChartsWrapper: React.FC<{ files: WriteOffFile[] }> = ({ files }) => {
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    setHasError(false);
+    setErrorMessage(null);
+  }, [files]);
+
+  if (hasError) {
+    return (
+      <GlassCard className="p-6">
+        <p className="text-red-400 text-center mb-2">Ошибка при отображении диаграмм</p>
+        {errorMessage && (
+          <p className="text-gray-500 text-sm text-center">{errorMessage}</p>
+        )}
+        <p className="text-gray-400 text-sm text-center mt-4">
+          Попробуйте перезагрузить страницу или загрузить файлы заново
+        </p>
+      </GlassCard>
+    );
+  }
+
+  try {
+    return <MonthlyCharts files={files} />;
+  } catch (error) {
+    console.error('WRITEOFF: Error in MonthlyChartsWrapper', error);
+    setHasError(true);
+    setErrorMessage(error instanceof Error ? error.message : 'Неизвестная ошибка');
+    return (
+      <GlassCard className="p-6">
+        <p className="text-red-400 text-center">Ошибка при отображении диаграмм</p>
+      </GlassCard>
+    );
+  }
+};
 
 export const WriteOffAnalysis: React.FC = () => {
   const navigate = useNavigate();
-  const { data, writeOffData, meta, supplierGroups, addWriteOffFile, resetWriteOffData, loadState } = useStore();
-  const [isProcessing, setIsProcessing] = useState(false);
+  const { data, writeOffData, meta, supplierGroups, resetWriteOffData, loadState } = useStore();
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isWriteOffPopupOpen, setIsWriteOffPopupOpen] = useState(false);
   const importInputRef = React.useRef<HTMLInputElement>(null);
+  const salesInputRef = React.useRef<HTMLInputElement>(null);
+  const [salesFiles, setSalesFiles] = useState<WriteOffSalesFile[]>([]);
 
+  // Debug лог, чтобы убедиться, что страница реально монтируется
+  console.log('WRITEOFF: WriteOffAnalysis render', {
+    writeOffFiles: writeOffData?.length ?? 'no-store',
+  });
   const handleExport = () => {
     const stateToSave = {
       data,
@@ -74,70 +112,35 @@ export const WriteOffAnalysis: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // Use the new hook for width
-  const { width, containerRef, mounted } = useContainerWidth();
+  const handleSalesUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
 
-  // Default Layouts
-  const defaultLayouts = {
-    lg: [
-      { i: 'ozon', x: 0, y: 0, w: 2, h: 2, minW: 1, minH: 2 },
-      { i: 'supplier', x: 2, y: 0, w: 2, h: 2, minW: 1, minH: 2 },
-      { i: 'chart', x: 0, y: 2, w: 4, h: 3, minW: 2, minH: 2 },
-      { i: 'table', x: 0, y: 5, w: 4, h: 3, minW: 2, minH: 2 }
-    ],
-    md: [
-      { i: 'ozon', x: 0, y: 0, w: 1, h: 2 },
-      { i: 'supplier', x: 1, y: 0, w: 2, h: 2 },
-      { i: 'chart', x: 0, y: 2, w: 3, h: 3 },
-      { i: 'table', x: 0, y: 5, w: 3, h: 3 }
-    ],
-    sm: [
-      { i: 'ozon', x: 0, y: 0, w: 1, h: 2 },
-      { i: 'supplier', x: 0, y: 2, w: 1, h: 2 },
-      { i: 'chart', x: 0, y: 4, w: 1, h: 3 },
-      { i: 'table', x: 0, y: 7, w: 1, h: 3 }
-    ]
-  };
-
-  const [layouts, setLayouts] = useState(defaultLayouts);
-
-  const handleFileUpload = async (files: File[]) => {
-    setIsProcessing(true);
-    setError(null);
     try {
-      for (const file of files) {
-        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.csv')) {
-             console.warn('Skipping non-excel file:', file.name);
-             continue;
-        }
-        
-        const parsedFile = await parseWriteOffFile(file);
-        addWriteOffFile(parsedFile);
+      const fileArray = Array.from(files);
+      const parsedFiles: WriteOffSalesFile[] = [];
+
+      for (const file of fileArray) {
+        console.log('WRITEOFF: parsing sales file', file.name);
+        const parsed = await parseWriteOffSalesFile(file);
+        parsedFiles.push(parsed);
       }
+
+      setSalesFiles(prev => [...prev, ...parsedFiles]);
+      console.log('WRITEOFF: sales files parsed', parsedFiles);
     } catch (err: any) {
-      console.error('Error processing file:', err);
-      setError(err.message || 'Ошибка при обработке файла. Убедитесь, что формат соответствует шаблону "Анализ причин списания".');
+      console.error('WRITEOFF: error parsing sales files', err);
+      setError(err?.message || 'Ошибка при загрузке файла продаж');
     } finally {
-      setIsProcessing(false);
-      // Reset input value to allow re-uploading same file if needed
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      if (salesInputRef.current) {
+        salesInputRef.current.value = '';
       }
     }
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files.length > 0) {
-      handleFileUpload(Array.from(event.target.files));
-    }
-  };
-
-  const onLayoutChange = (layout: Layout, allLayouts: any) => {
-    setLayouts(allLayouts);
-  };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-gray-100 p-6 space-y-8" ref={containerRef}>
+    <div className="min-h-screen bg-slate-900 text-gray-100 p-6 space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-4">
@@ -184,33 +187,31 @@ export const WriteOffAnalysis: React.FC = () => {
 
             <div className="w-px h-6 bg-gray-700 mx-2" />
 
+            <IOSButton 
+                variant="primary" 
+                onClick={() => setIsWriteOffPopupOpen(true)}
+                className="flex items-center space-x-2 py-1 px-3 text-sm shadow-lg shadow-blue-500/20"
+                title="Загрузить файлы списаний"
+            >
+                <Upload size={16} />
+                <span>Загрузить списания</span>
+            </IOSButton>
+
             <input
                 type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                multiple
-                accept=".xlsx, .csv"
+                ref={salesInputRef}
+                onChange={handleSalesUpload}
+                accept=".xlsx,.xls,.csv"
                 className="hidden"
             />
             <IOSButton 
                 variant="primary" 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isProcessing}
-                className="flex items-center space-x-2 py-1 px-3 text-sm shadow-lg shadow-blue-500/20"
-                title="Принимаются только файлы Excel (.xlsx)"
+                onClick={() => salesInputRef.current?.click()}
+                className="flex items-center space-x-2 py-1 px-3 text-sm shadow-lg shadow-green-500/20"
+                title="Загрузить файлы продаж"
             >
                 <Upload size={16} />
-                <span>{isProcessing ? 'Загрузка...' : 'Загрузить'}</span>
-            </IOSButton>
-
-            <IOSButton 
-                variant="secondary" 
-                onClick={() => setLayouts(defaultLayouts)}
-                className="flex items-center space-x-2 py-1 px-3 text-sm"
-                title="Сбросить расположение плиток"
-            >
-                <LayoutGrid size={16} />
-                <span>Сброс UI</span>
+                <span>Загрузить продажи</span>
             </IOSButton>
 
             {writeOffData.length > 0 && (
@@ -242,63 +243,28 @@ export const WriteOffAnalysis: React.FC = () => {
         </div>
       )}
 
-      {mounted && (
-        <Responsive
-            className="layout"
-            layouts={layouts}
-            breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-            cols={{ lg: 4, md: 3, sm: 1, xs: 1, xxs: 1 }}
-            rowHeight={150}
-        dragConfig={{ handle: ".drag-handle", enabled: true }}
-        resizeConfig={{ enabled: true }}
-        onLayoutChange={onLayoutChange}
-        margin={[24, 24]}
-            width={width}
-        >
-            {/* Upload Zone Removed */}
-
-
-            {/* Ozon Analysis Widget */}
-            <div key="ozon" className="relative group">
-                <div className="drag-handle absolute top-2 right-2 p-1 cursor-grab active:cursor-grabbing text-gray-400 hover:text-white z-20 bg-black/20 rounded backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                    <LayoutGrid size={16} />
-                </div>
-                <div className="h-full w-full overflow-hidden">
-                    <OzonAnalysis files={writeOffData} />
-                </div>
-            </div>
-
-            {/* Supplier Analysis Widget */}
-            <div key="supplier" className="relative group">
-                <div className="drag-handle absolute top-2 right-2 p-1 cursor-grab active:cursor-grabbing text-gray-400 hover:text-white z-20 bg-black/20 rounded backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                    <LayoutGrid size={16} />
-                </div>
-                <div className="h-full w-full overflow-hidden">
-                    <SupplierAnalysis files={writeOffData} />
-                </div>
-            </div>
-
-            {/* Main Chart */}
-            <div key="chart" className="relative group">
-                <div className="drag-handle absolute top-2 right-2 p-1 cursor-grab active:cursor-grabbing text-gray-400 hover:text-white z-20 bg-black/20 rounded backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                    <LayoutGrid size={16} />
-                </div>
-                <div className="h-full w-full overflow-hidden flex flex-col">
-                    <WriteOffChart files={writeOffData} />
-                </div>
-            </div>
-
-            {/* Full Table */}
-            <div key="table" className="relative group">
-                <div className="drag-handle absolute top-2 right-2 p-1 cursor-grab active:cursor-grabbing text-gray-400 hover:text-white z-20 bg-black/20 rounded backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
-                    <LayoutGrid size={16} />
-                </div>
-                <div className="h-full w-full overflow-hidden flex flex-col overflow-y-auto custom-scrollbar">
-                    <WriteOffTable files={writeOffData} />
-                </div>
-            </div>
-        </Responsive>
+      {writeOffData.length === 0 ? (
+        <GlassCard className="p-12 text-center">
+          <Upload className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Нет загруженных файлов</h2>
+          <p className="text-gray-400 mb-6">Загрузите файлы списаний для начала анализа</p>
+          <IOSButton 
+            variant="primary" 
+            onClick={() => setIsWriteOffPopupOpen(true)}
+            className="flex items-center space-x-2 mx-auto"
+          >
+            <Upload size={20} />
+            <span>Загрузить списания</span>
+          </IOSButton>
+        </GlassCard>
+      ) : (
+        <MonthlyChartsWrapper files={writeOffData} />
       )}
+
+      <WriteOffPopup 
+        isOpen={isWriteOffPopupOpen} 
+        onClose={() => setIsWriteOffPopupOpen(false)} 
+      />
     </div>
   );
 };
