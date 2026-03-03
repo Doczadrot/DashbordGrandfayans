@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, ChartData } from 'chart.js';
 import { Doughnut } from 'react-chartjs-2';
 import { WriteOffFile } from '../../types/writeoff.types';
@@ -31,6 +31,9 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({ files }) => {
   console.log('WRITEOFF: MonthlyCharts render', {
     filesCount: files?.length ?? 0,
   });
+
+  // Локальное состояние: какие месяцы развернуты (показывать всех причин, а не топ-15)
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
 
   // Группируем данные по месяцам
   const monthlyData = useMemo(() => {
@@ -112,11 +115,14 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({ files }) => {
             return null;
           }
 
+          const isExpanded = expandedMonths[month] ?? false;
+          const reasonsToShow = isExpanded ? reasons : reasons.slice(0, 15);
+
           const chartData: ChartData<'doughnut'> = {
-            labels: reasons.map(r => r.reason || 'Не указано'),
+            labels: reasonsToShow.map(r => r.reason || 'Не указано'),
             datasets: [
               {
-                data: reasons.map(r => r.count || 0),
+                data: reasonsToShow.map(r => r.count || 0),
                 backgroundColor: [
                   '#FF6384',
                   '#36A2EB',
@@ -141,7 +147,7 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({ files }) => {
           onClick: (_event: unknown, elements: { index: number }[]) => {
             if (elements.length > 0) {
               const index = elements[0].index;
-              const reason = reasons[index]?.reason;
+              const reason = reasonsToShow[index]?.reason;
               if (reason) {
                 handleChartClick(month, reason);
               }
@@ -184,7 +190,27 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({ files }) => {
         };
 
           return (
-            <GlassCard key={month} className="p-4">
+            <GlassCard key={month} className="p-4 flex flex-col">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-gray-400">
+                  {isExpanded
+                    ? `Показаны все (${reasons.length}) причин` 
+                    : `Топ-15 из ${reasons.length} причин`}
+                </span>
+                {reasons.length > 15 && (
+                  <button
+                    onClick={() =>
+                      setExpandedMonths(prev => ({
+                        ...prev,
+                        [month]: !isExpanded,
+                      }))
+                    }
+                    className="text-xs px-3 py-1 rounded-full bg-white/10 hover:bg-white/20 text-gray-200 transition-colors"
+                  >
+                    {isExpanded ? 'Показать топ-15' : 'Показать всех'}
+                  </button>
+                )}
+              </div>
               <div style={{ height: '320px' }}>
                 <Doughnut data={chartData} options={options} />
               </div>

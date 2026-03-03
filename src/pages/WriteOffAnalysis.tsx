@@ -220,6 +220,12 @@ export const WriteOffAnalysis: React.FC = () => {
                     onClick={() => {
                         if (confirm('Вы уверены, что хотите удалить все загруженные данные?')) {
                             resetWriteOffData();
+                            // Сбрасываем историю загруженных файлов списаний, чтобы можно было загрузить их снова
+                            try {
+                              localStorage.removeItem('uploaded-writeoff-files-v1');
+                            } catch (err) {
+                              console.error('WRITEOFF: Error clearing uploaded write-off files history', err);
+                            }
                         }
                     }}
                     className="flex items-center space-x-2 py-1 px-3 text-sm"

@@ -137,27 +137,27 @@ export const WriteOffDetailsPage: React.FC = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-400 text-left border-b border-white/10">
-                  <th className="pb-3 font-medium">Номенклатура</th>
-                  <th className="pb-3 font-medium text-right">Количество</th>
-                  <th className="pb-3 font-medium text-right">Себестоимость</th>
-                  <th className="pb-3 font-medium">Поставщик</th>
-                  <th className="pb-3 font-medium">Склад</th>
-                  <th className="pb-3 font-medium">Документ списания</th>
-                  <th className="pb-3 font-medium">Дата</th>
+                  <th className="px-4 pb-3 font-medium">Номенклатура</th>
+                  <th className="px-4 pb-3 font-medium text-right">Количество</th>
+                  <th className="px-4 pb-3 font-medium text-right">Себестоимость</th>
+                  <th className="px-4 pb-3 font-medium">Поставщик</th>
+                  <th className="px-4 pb-3 font-medium">Склад</th>
+                  <th className="px-4 pb-3 font-medium">Документ списания</th>
+                  <th className="px-4 pb-3 font-medium">Дата</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredItems.map((item, idx) => (
                   <tr key={idx} className="text-gray-300 border-b border-white/5 hover:bg-white/5">
-                    <td className="py-3">{item.nomenclature}</td>
-                    <td className="py-3 text-right">{item.quantity.toLocaleString()}</td>
-                    <td className="py-3 text-right">
+                    <td className="px-4 py-3">{item.nomenclature}</td>
+                    <td className="px-4 py-3 text-right">{item.quantity.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right">
                       {item.sum.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })}
                     </td>
-                    <td className="py-3">{item.supplier || 'Не указано'}</td>
-                    <td className="py-3">{item.warehouse || 'Не указано'}</td>
-                    <td className="py-3">{item.writeOffDocument || 'Не указано'}</td>
-                    <td className="py-3">{item.writeOffDate || 'Не указано'}</td>
+                    <td className="px-4 py-3">{item.supplier || 'Не указано'}</td>
+                    <td className="px-4 py-3">{item.warehouse || 'Не указано'}</td>
+                    <td className="px-4 py-3">{item.writeOffDocument || 'Не указано'}</td>
+                    <td className="px-4 py-3">{item.writeOffDate || 'Не указано'}</td>
                   </tr>
                 ))}
               </tbody>
