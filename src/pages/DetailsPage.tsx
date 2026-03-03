@@ -37,7 +37,7 @@ ChartJS.register(
 );
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
-const DETAILS_LAYOUT_STORAGE_KEY = 'details-layout-v3'; // ↑ новая версия layout'а, чтобы сбросить старые кривые сохранения
+const DETAILS_LAYOUT_STORAGE_KEY = 'details-layout-v5'; // ↑ новая версия layout'а, чтобы сбросить старые кривые сохранения
 const GROUP_LAYOUT_STORAGE_KEY = 'group-layout-v1';
 
 // Базовые (эталонные) layout'ы для всех брейкпоинтов
@@ -53,8 +53,8 @@ const defaultLayouts = {
     { i: 'breakdown_description_ozon', x: 8, y: 0, w: 4, h: 10, minW: 3, minH: 8 },
     // PPM по поставщикам — делаем в 2 раза ниже по сравнению с исходным вариантом
     { i: 'ppm', x: 0, y: 20, w: 12, h: 7, minW: 8, minH: 5 },
-    // Продажи по месяцам – отдельная строка
-    { i: 'sales_stats', x: 0, y: 27, w: 12, h: 6, minW: 6, minH: 5 },
+    // Продажи по месяцам – отдельная строка, делаем виджет широким и высоким
+    { i: 'sales_stats', x: 0, y: 27, w: 12, h: 10, minW: 12, minH: 8 },
     { i: 'table', x: 0, y: 33, w: 12, h: 12, minW: 8, minH: 8 },
   ],
   md: [
@@ -63,7 +63,7 @@ const defaultLayouts = {
     { i: 'breakdown_left', x: 0, y: 10, w: 3, h: 10, minW: 3, minH: 8 },
     { i: 'breakdown_right', x: 3, y: 10, w: 3, h: 10, minW: 3, minH: 8 },
     { i: 'breakdown_description_ozon', x: 7, y: 0, w: 3, h: 10, minW: 3, minH: 8 },
-    { i: 'sales_stats', x: 0, y: 20, w: 10, h: 6, minW: 5, minH: 5 },
+    { i: 'sales_stats', x: 0, y: 20, w: 10, h: 10, minW: 10, minH: 8 },
     { i: 'table', x: 0, y: 26, w: 10, h: 12, minW: 6, minH: 8 },
   ],
   sm: [
@@ -72,7 +72,7 @@ const defaultLayouts = {
     { i: 'breakdown_description_ozon', x: 0, y: 9, w: 6, h: 9, minW: 4, minH: 7 },
     { i: 'breakdown_left', x: 0, y: 18, w: 6, h: 9, minW: 4, minH: 7 },
     { i: 'breakdown_right', x: 0, y: 27, w: 6, h: 9, minW: 4, minH: 7 },
-    { i: 'sales_stats', x: 0, y: 36, w: 6, h: 6, minW: 4, minH: 5 },
+    { i: 'sales_stats', x: 0, y: 36, w: 6, h: 10, minW: 6, minH: 8 },
     { i: 'table', x: 0, y: 42, w: 6, h: 12, minW: 4, minH: 8 },
   ],
 };
@@ -120,10 +120,11 @@ const normalizeLayouts = (savedLayouts: any | null): any => {
     // Собираем итоговый список: строго в том же порядке, что и дефолтные
     result[bp] = defaultsForBp.map((defItem) => {
       const saved = savedByKey.get(defItem.i);
+      // Берём координаты/размеры из сохранённого layout'а, но minW/minH — из дефолтного
       const base = saved ? { ...defItem, ...saved } : defItem;
 
-      const minW = base.minW ?? 2;
-      const minH = base.minH ?? 5;
+      const minW = defItem.minW ?? base.minW ?? 2;
+      const minH = defItem.minH ?? base.minH ?? 5;
 
       const normalizedW = Math.max(base.w ?? defItem.w, minW);
       const normalizedH = Math.max(base.h ?? defItem.h, minH);
@@ -402,10 +403,12 @@ export const DetailsPage: React.FC = () => {
         // чтобы их можно было загрузить повторно
         try {
           localStorage.removeItem('uploaded-files-v1');
+          localStorage.removeItem(DETAILS_LAYOUT_STORAGE_KEY);
         } catch (err) {
           console.error('DETAILS: Error clearing uploaded files storage on reset', err);
         }
-        addLog('Данные о продажах МП сброшены');
+        // Сбрасываем layout к дефолтному прямо в текущей сессии
+        setLayouts(normalizeLayouts(defaultLayouts));
         navigate('/dashboard');
     }
   };
@@ -428,12 +431,10 @@ export const DetailsPage: React.FC = () => {
   const handleBack = () => {
     const newParams = new URLSearchParams(searchParams);
     if (newParams.has('subType') || newParams.has('subValue')) {
-      addLog('Возврат на уровень выше (сброс суб-фильтра)');
       newParams.delete('subType');
       newParams.delete('subValue');
       navigate(`${location.pathname}?${newParams.toString()}`, { replace: false });
     } else {
-      addLog('Возврат на главный дашборд');
       navigate('/dashboard');
     }
   };
@@ -467,10 +468,6 @@ export const DetailsPage: React.FC = () => {
     return initial;
   });
   const [showAllRecords, setShowAllRecords] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
-  const addLog = (msg: string) => {
-    setLogs(prev => [new Date().toLocaleTimeString() + ': ' + msg, ...prev].slice(0, 10));
-  };
   const [showAllComparison, setShowAllComparison] = useState(false);
   const [isExpanding, setIsExpanding] = useState(false);
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string | null>(monthFromUrl);
@@ -478,7 +475,6 @@ export const DetailsPage: React.FC = () => {
   const toggleShowAllComparison = () => {
     setIsExpanding(true);
     setShowAllComparison(prev => !prev);
-    addLog(showAllComparison ? 'Скрытие части поставщиков' : 'Показ всех поставщиков');
     setTimeout(() => setIsExpanding(false), 500);
   };
 
@@ -1526,7 +1522,6 @@ export const DetailsPage: React.FC = () => {
 
   // Click Handlers
   const handleDescriptionClick = (event: any, elements: { index: number }[]) => {
-      addLog('Клик по графику дефектов');
       if (event && event.chart) {
         event.chart.tooltip.setActiveElements([], { x: 0, y: 0 });
         event.chart.update();
@@ -1534,13 +1529,11 @@ export const DetailsPage: React.FC = () => {
       if (elements.length > 0) {
           const index = elements[0].index;
           const label = descriptionBreakdown.labels[index];
-          addLog(`Выбран дефект: ${label}`);
           setLocalFilter({ type: 'description', value: label });
       }
   };
 
   const handleSupplierClick = (event: any, elements: { index: number }[]) => {
-      addLog('Клик по графику поставщиков');
       if (event && event.chart) {
         event.chart.tooltip.setActiveElements([], { x: 0, y: 0 });
         event.chart.update();
@@ -1548,13 +1541,11 @@ export const DetailsPage: React.FC = () => {
       if (elements.length > 0) {
           const index = elements[0].index;
           const label = supplierBreakdown.labels[index];
-          addLog(`Выбран поставщик: ${label}`);
           setLocalFilter({ type: 'supplier', value: label });
       }
   };
 
   const handleNomenclatureClick = (event: any, elements: { index: number }[]) => {
-      addLog('Клик по графику номенклатуры');
       if (event && event.chart) {
         event.chart.tooltip.setActiveElements([], { x: 0, y: 0 });
         event.chart.update();
@@ -1562,13 +1553,11 @@ export const DetailsPage: React.FC = () => {
       if (elements.length > 0) {
           const index = elements[0].index;
           const label = nomenclatureBreakdown.labels[index];
-          addLog(`Выбрана номенклатура: ${label}`);
           setLocalFilter({ type: 'nomenclature', value: label });
       }
   };
 
   const handleMainChartClick = (event: any, elements: any[]) => {
-    addLog(`Клик по основному графику: ${elements.length} элементов`);
     if (event && event.chart) {
       event.chart.tooltip.setActiveElements([], { x: 0, y: 0 });
       event.chart.update();
@@ -1578,24 +1567,19 @@ export const DetailsPage: React.FC = () => {
       
       if (type === 'group') {
         let label = comparisonData.labels[index];
-        addLog(`Групповой вид: Выбран поставщик ${label}`);
         setLocalFilter({ type: 'supplier', value: label });
       } else {
         const dataset = comparisonData.datasets[datasetIndex];
         const datasetLabel = dataset.label;
-        addLog(`Временной ряд: Выбран датасет ${datasetLabel}`);
         
         if (datasetLabel === 'Другое' || datasetLabel === 'Другие') {
-          addLog('Сброс фильтра (выбрано "Другое")');
           setLocalFilter(null);
           return;
         }
 
         if (type === 'supplier') {
-          addLog(`Фильтр по дефекту: ${datasetLabel}`);
           setLocalFilter({ type: 'description', value: datasetLabel });
         } else {
-          addLog(`Фильтр по поставщику: ${datasetLabel}`);
           setLocalFilter({ type: 'supplier', value: datasetLabel });
         }
       }
@@ -1603,8 +1587,6 @@ export const DetailsPage: React.FC = () => {
   };
 
   const handleComparativeChartClick = (event: any, elements: any[]) => {
-    addLog('Клик по сравнительному графику');
-    
     // Скрываем тултип при клике, чтобы он не "залипал"
     if (event && event.chart) {
       event.chart.tooltip.setActiveElements([], { x: 0, y: 0 });
@@ -1620,14 +1602,12 @@ export const DetailsPage: React.FC = () => {
       let label = comparativeChartConfig.data.labels[index];
       const dataset = comparativeChartConfig.data.datasets[datasetIndex];
       const datasetLabel = (dataset as any).label || '';
-      addLog(`Детали клика: тип=${chartType}, метка=${label}, датасет=${datasetLabel}`);
 
       if (label && typeof label === 'string' && label.includes(' (')) {
         label = label.split(' (')[0];
       }
 
       if (label === 'Другие' || datasetLabel === 'Другие' || label === 'Другое' || datasetLabel === 'Другое') {
-        addLog('Сброс фильтра (выбрано "Другое")');
         setLocalFilter(null);
         return;
       }
@@ -1638,7 +1618,6 @@ export const DetailsPage: React.FC = () => {
           : datasetLabel.trim();
         if (monthFromDataset) {
           setSelectedMonthFilter(monthFromDataset);
-          addLog(`Фильтр по месяцу: ${monthFromDataset}`);
         }
       } else if (chartType.includes('dynamics') || chartType.includes('trends')) {
         if (chartType.includes('supplier')) {
@@ -1657,26 +1636,6 @@ export const DetailsPage: React.FC = () => {
       }
     }
   };
-
-  const ActionLogOverlay = () => (
-    <div className="fixed bottom-6 right-6 w-80 bg-black/80 backdrop-blur-lg rounded-2xl border border-white/10 p-4 shadow-2xl z-50 pointer-events-none transition-all hover:bg-black/90">
-        <div className="flex items-center gap-2 mb-3 text-blue-400 font-bold text-xs uppercase tracking-widest">
-            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-            Лог действий (Debug)
-        </div>
-        <div className="space-y-2 max-h-48 overflow-y-auto pointer-events-auto">
-            {logs.length === 0 ? (
-                <div className="text-gray-500 text-[10px] italic">Ожидание действий...</div>
-            ) : (
-                logs.map((log, i) => (
-                    <div key={i} className="text-[10px] text-gray-300 font-mono leading-tight border-l border-blue-500/30 pl-2">
-                        {log}
-                    </div>
-                ))
-            )}
-        </div>
-    </div>
-  );
 
   if (!type || !value) {
     return (
@@ -2148,7 +2107,6 @@ export const DetailsPage: React.FC = () => {
                 </div>
             </ResponsiveGridLayout>
 
-            <ActionLogOverlay />
         </div>
     );
   }
@@ -2223,21 +2181,25 @@ export const DetailsPage: React.FC = () => {
                 <RotateCcw size={18} className="mr-2" /> Сброс
             </IOSButton>
             
-            <IOSButton 
-                onClick={handleSalesButtonClick} 
-                variant="primary" 
-                className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
-                disabled={isUploading}
-            >
-                {isUploading ? 'Загрузка...' : 'Продажи МП'}
-            </IOSButton>
-            <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileUpload} 
-                className="hidden" 
-                accept=".xlsx,.csv,.txt"
-            />
+            {type === 'reason' && isOzonYandex && (
+              <>
+                <IOSButton 
+                    onClick={handleSalesButtonClick} 
+                    variant="primary" 
+                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
+                    disabled={isUploading}
+                >
+                    {isUploading ? 'Загрузка...' : 'Продажи МП'}
+                </IOSButton>
+                <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleFileUpload} 
+                    className="hidden" 
+                    accept=".xlsx,.csv,.txt"
+                />
+              </>
+            )}
         </div>
       </div>
 
@@ -2249,15 +2211,7 @@ export const DetailsPage: React.FC = () => {
         margin={[24, 24]}
         containerPadding={[0, 0]}
         layouts={layouts}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onLayoutChange={(_layout: any, allLayouts: any) => {
-          setLayouts(allLayouts);
-          try {
-            localStorage.setItem(DETAILS_LAYOUT_STORAGE_KEY, JSON.stringify(allLayouts));
-          } catch (e) {
-            console.error('Error saving layout:', e);
-          }
-        }}
+        onLayoutChange={onLayoutChange}
         draggableHandle=".tile-drag-handle"
         resizeHandles={['se', 'e', 's']}
         compactType="vertical"
@@ -2349,8 +2303,8 @@ export const DetailsPage: React.FC = () => {
 
         {/* Sales Stats Tile - только для отчета \"Анализ причины\" по Бою ОЗОН/Яндекс */}
         {type === 'reason' && isOzonYandex && Object.keys(salesStats).length > 0 && (
-          <div key="sales_stats" className="h-full min-h-[200px] relative z-10">
-              <GlassCard className="h-full min-h-[200px] p-6 flex flex-col justify-between relative">
+          <div key="sales_stats" className="h-full min-h-[260px] relative z-10">
+              <GlassCard className="h-full min-h-[260px] p-6 flex flex-col justify-between relative">
                   <div className="tile-drag-handle absolute top-2 right-2 z-10 p-1 rounded bg-white/5 hover:bg-white/10 cursor-grab">
                       <GripVertical size={14} className="text-gray-400" />
                   </div>
@@ -2718,7 +2672,6 @@ export const DetailsPage: React.FC = () => {
       </div>
       </ResponsiveGridLayout>
 
-      <ActionLogOverlay />
     </div>
   );
 };
