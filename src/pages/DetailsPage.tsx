@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import type { SalesRecord } from '../types/data.types';
 import { parseFile } from '../utils/dataProcessor';
 import { GlassCard } from '../components/UI/GlassCard';
 import { IOSButton } from '../components/UI/IOSButton';
@@ -37,7 +38,7 @@ ChartJS.register(
 );
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
-const DETAILS_LAYOUT_STORAGE_KEY = 'details-layout-v5'; // ↑ новая версия layout'а, чтобы сбросить старые кривые сохранения
+const DETAILS_LAYOUT_STORAGE_KEY = 'details-layout-v6'; // ↑ новая версия layout'а, чтобы сбросить старые кривые сохранения
 const GROUP_LAYOUT_STORAGE_KEY = 'group-layout-v1';
 
 // Базовые (эталонные) layout'ы для всех брейкпоинтов
@@ -47,8 +48,8 @@ const defaultLayouts = {
     { i: 'comparison', x: 0, y: 0, w: 8, h: 10, minW: 6, minH: 8 },
     // Структура дефектов (По описанию) и Виновники (Топ Поставщиков)
     // — используем те же размеры, что и компактный виджет "Структура по описанию (из общего объема)"
-    { i: 'breakdown_left', x: 0, y: 10, w: 4, h: 10, minW: 3, minH: 8 },
-    { i: 'breakdown_right', x: 4, y: 10, w: 4, h: 10, minW: 3, minH: 8 },
+  { i: 'breakdown_left', x: 0, y: 10, w: 4, h: 12, minW: 3, minH: 10 },
+  { i: 'breakdown_right', x: 4, y: 10, w: 4, h: 12, minW: 3, minH: 10 },
     // ОЗОН/Яндекс: компактный виджет структуры по описанию справа
     { i: 'breakdown_description_ozon', x: 8, y: 0, w: 4, h: 10, minW: 3, minH: 8 },
     // PPM по поставщикам — делаем в 2 раза ниже по сравнению с исходным вариантом
@@ -60,8 +61,8 @@ const defaultLayouts = {
   md: [
     { i: 'comparison', x: 0, y: 0, w: 7, h: 10, minW: 5, minH: 8 },
     // Для среднего экрана тоже делаем компактные пончики
-    { i: 'breakdown_left', x: 0, y: 10, w: 3, h: 10, minW: 3, minH: 8 },
-    { i: 'breakdown_right', x: 3, y: 10, w: 3, h: 10, minW: 3, minH: 8 },
+  { i: 'breakdown_left', x: 0, y: 10, w: 3, h: 12, minW: 3, minH: 10 },
+  { i: 'breakdown_right', x: 3, y: 10, w: 3, h: 12, minW: 3, minH: 10 },
     { i: 'breakdown_description_ozon', x: 7, y: 0, w: 3, h: 10, minW: 3, minH: 8 },
     { i: 'sales_stats', x: 0, y: 20, w: 10, h: 10, minW: 10, minH: 8 },
     { i: 'table', x: 0, y: 26, w: 10, h: 12, minW: 6, minH: 8 },
@@ -69,11 +70,11 @@ const defaultLayouts = {
   sm: [
     // На мобильном сравнительный анализ и структура идут друг под другом
     { i: 'comparison', x: 0, y: 0, w: 6, h: 9, minW: 4, minH: 7 },
-    { i: 'breakdown_description_ozon', x: 0, y: 9, w: 6, h: 9, minW: 4, minH: 7 },
-    { i: 'breakdown_left', x: 0, y: 18, w: 6, h: 9, minW: 4, minH: 7 },
-    { i: 'breakdown_right', x: 0, y: 27, w: 6, h: 9, minW: 4, minH: 7 },
-    { i: 'sales_stats', x: 0, y: 36, w: 6, h: 10, minW: 6, minH: 8 },
-    { i: 'table', x: 0, y: 42, w: 6, h: 12, minW: 4, minH: 8 },
+  { i: 'breakdown_description_ozon', x: 0, y: 9, w: 6, h: 9, minW: 4, minH: 7 },
+  { i: 'breakdown_left', x: 0, y: 18, w: 6, h: 11, minW: 4, minH: 9 },
+  { i: 'breakdown_right', x: 0, y: 29, w: 6, h: 11, minW: 4, minH: 9 },
+  { i: 'sales_stats', x: 0, y: 40, w: 6, h: 10, minW: 6, minH: 8 },
+  { i: 'table', x: 0, y: 50, w: 6, h: 12, minW: 4, minH: 8 },
   ],
 };
 
@@ -195,12 +196,17 @@ export const DetailsPage: React.FC = () => {
 
   const isFactoryReason = type === 'reason' && value === 'Заводской брак';
 
-  // 1. Filter Sales Data (Consistent with Dashboard.tsx and URL params)
+  // Продажи МП, загруженные через кнопку на этой странице
+  const [mpSalesData, setMpSalesData] = useState<SalesRecord[]>([]);
+  // Флаг: были ли загружены продажи МП через кнопку "Продажи МП" на этой странице
+  const [mpSalesLoaded, setMpSalesLoaded] = useState(false);
+
+  // 1. Filter Sales Data (используем только продажи, загруженные через кнопку "Продажи МП" на этой странице)
   const filteredSalesData = useMemo(() => {
-    if (!salesData || !type || !value) return [];
+    if (!mpSalesLoaded || !mpSalesData.length || !type || !value) return [];
     const lowerValue = value.toLowerCase().trim();
     
-    return salesData.filter(item => {
+    return mpSalesData.filter(item => {
         // Sales data usually doesn't have 'reason' or 'description', 
         // but it has 'supplier' and 'nomenclature'.
         if (type === 'supplier') return item.supplier?.toLowerCase().trim() === lowerValue;
@@ -209,12 +215,10 @@ export const DetailsPage: React.FC = () => {
             return groupSuppliers.includes(item.supplier?.toLowerCase().trim());
         }
         
-        // If filtering by reason/description, sales data doesn't apply directly
-        // but we might want to show total sales for the context of those defects.
-        // For now, return all for the supplier if we can find it, or just all.
+        // Для видов "reason"/"description" продаж напрямую нет — возвращаем все продажи МП для контекста
         return true; 
     });
-  }, [salesData, type, value, supplierGroups]);
+  }, [mpSalesData, mpSalesLoaded, type, value, supplierGroups]);
 
   const handleSalesButtonClick = () => {
     fileInputRef.current?.click();
@@ -317,6 +321,7 @@ export const DetailsPage: React.FC = () => {
     // Предотвращаем повторную загрузку тех же файлов (имя + размер)
     const STORAGE_KEY = 'uploaded-files-v1';
     let storedSignatures: string[] = [];
+    let hasSalesInBatch = false;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -347,9 +352,13 @@ export const DetailsPage: React.FC = () => {
           if (result.records && result.records.length > 0) {
             addData(result.records);
           }
-          
+
           if (result.sales && result.sales.length > 0) {
+            // Добавляем в глобальный стор (для других дашбордов)
             addSalesData(result.sales);
+            // И в локальное состояние для этого виджета
+            setMpSalesData(prev => [...prev, ...result.sales]);
+            hasSalesInBatch = true;
           }
           
           // Update meta
@@ -370,6 +379,11 @@ export const DetailsPage: React.FC = () => {
           errorCount++;
           errors.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
+      }
+
+      // Если в загруженных файлах были продажи — помечаем, что продажи МП загружены локально
+      if (hasSalesInBatch) {
+        setMpSalesLoaded(true);
       }
 
       // Показываем результат загрузки
@@ -409,6 +423,8 @@ export const DetailsPage: React.FC = () => {
         }
         // Сбрасываем layout к дефолтному прямо в текущей сессии
         setLayouts(normalizeLayouts(defaultLayouts));
+        setMpSalesLoaded(false);
+        setMpSalesData([]);
         navigate('/dashboard');
     }
   };
@@ -1619,6 +1635,12 @@ export const DetailsPage: React.FC = () => {
         if (monthFromDataset) {
           setSelectedMonthFilter(monthFromDataset);
         }
+
+        // Для дашборда "Анализ причины / Заводской брак":
+        // клик по столбцу должен фильтровать данные по выбранному поставщику и месяцу
+        if (isFactoryReason && typeof label === 'string' && label) {
+          setLocalFilter({ type: 'supplier', value: label });
+        }
       } else if (chartType.includes('dynamics') || chartType.includes('trends')) {
         if (chartType.includes('supplier')) {
           setLocalFilter({ type: 'supplier', value: datasetLabel });
@@ -2302,7 +2324,7 @@ export const DetailsPage: React.FC = () => {
         )}
 
         {/* Sales Stats Tile - только для отчета \"Анализ причины\" по Бою ОЗОН/Яндекс */}
-        {type === 'reason' && isOzonYandex && Object.keys(salesStats).length > 0 && (
+        {type === 'reason' && isOzonYandex && mpSalesLoaded && Object.keys(salesStats).length > 0 && (
           <div key="sales_stats" className="h-full min-h-[260px] relative z-10">
               <GlassCard className="h-full min-h-[260px] p-6 flex flex-col justify-between relative">
                   <div className="tile-drag-handle absolute top-2 right-2 z-10 p-1 rounded bg-white/5 hover:bg-white/10 cursor-grab">

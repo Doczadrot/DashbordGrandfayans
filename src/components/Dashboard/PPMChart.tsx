@@ -428,14 +428,6 @@ export const PPMChart: React.FC<PPMChartProps> = ({ defectData, arrivalData, onS
       <div className="absolute bottom-2 left-2 text-xs text-gray-500">
         Кликните на столбец для фильтрации списка по поставщику и месяцу
       </div>
-      {showAverage && (
-        <div className="absolute bottom-2 right-2 text-xs text-emerald-300 text-right">
-          Средний PPM: {chartData.globalAvgPpm.toFixed(2)}%{' '}
-          <span className="text-emerald-500/80">
-            (Брак: {chartData.globalDefect} шт., Поставки: {chartData.globalArrival.toLocaleString()} шт.)
-          </span>
-        </div>
-      )}
     </GlassCard>
   );
 };
