@@ -235,8 +235,24 @@ const extractSalesData = (rawData: RawDataRow[], reportMonth: string, fileName: 
     const salesRecords: SalesRecord[] = [];
     
     rawData.forEach(row => {
-        // "1 строка = 1 штука" rule for marketplace sales files as requested by user
+        // По умолчанию 1 строка = 1 штука, но если есть явная колонка "Количество" — используем её
         let qty = 1;
+
+        const qtyRaw =
+          row['Количество'] ??
+          row['Кол-во'] ??
+          row['Количества'] ??
+          row['Qty'] ??
+          row['Quantity'];
+
+        if (typeof qtyRaw === 'number') {
+          qty = qtyRaw;
+        } else if (typeof qtyRaw === 'string' && qtyRaw.trim() !== '') {
+          const parsed = parseFloat(qtyRaw.replace(/\s/g, '').replace(',', '.'));
+          if (!Number.isNaN(parsed) && parsed > 0) {
+            qty = parsed;
+          }
+        }
 
         const nomenclature = String(row['Список товаров или название услуги'] || row['Номенклатура'] || row['Товар'] || '');
         
@@ -273,7 +289,18 @@ const extractSalesData = (rawData: RawDataRow[], reportMonth: string, fileName: 
             }
         }
         
-        if (nomenclature && nomenclature !== 'undefined' && nomenclature.trim() !== '' && nomenclature !== 'Товар' && nomenclature !== 'Номенклатура') {
+        const trimmedName = nomenclature.trim();
+        const lowerName = trimmedName.toLowerCase();
+
+        // Отбрасываем служебные строки: заголовки, итоги и т.п.
+        const isServiceRow =
+          trimmedName === '' ||
+          trimmedName === 'Товар' ||
+          trimmedName === 'Номенклатура' ||
+          lowerName.startsWith('итого') ||
+          lowerName.startsWith('всего');
+
+        if (!isServiceRow && trimmedName !== '' && trimmedName !== 'undefined') {
             salesRecords.push({
                 month: month,
                 quantity: qty,
