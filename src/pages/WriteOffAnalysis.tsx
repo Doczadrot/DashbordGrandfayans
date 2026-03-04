@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore';
 import { GlassCard } from '../components/UI/GlassCard';
 import { IOSButton } from '../components/UI/IOSButton';
 import { MonthlyCharts } from '../components/WriteOff/MonthlyCharts';
+import { ComparativeBarChart } from '../components/WriteOff/ComparativeBarChart';
 import { WriteOffPopup } from '../components/WriteOff/WriteOffPopup';
 import { parseWriteOffSalesFile, WriteOffSalesFile } from '../utils/writeOffSalesParser';
 import { WriteOffFile } from '../types/writeoff.types';
@@ -264,7 +265,10 @@ export const WriteOffAnalysis: React.FC = () => {
           </IOSButton>
         </GlassCard>
       ) : (
-        <MonthlyChartsWrapper files={writeOffData} />
+        <div className="space-y-8">
+          <MonthlyChartsWrapper files={writeOffData} />
+          <ComparativeBarChart files={writeOffData} />
+        </div>
       )}
 
       <WriteOffPopup 

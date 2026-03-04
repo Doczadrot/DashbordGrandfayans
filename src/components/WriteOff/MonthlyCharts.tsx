@@ -7,6 +7,42 @@ import { useNavigate } from 'react-router-dom';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
+// Плагин для отображения суммы в центре круговой диаграммы
+const centerTextPlugin = {
+  id: 'centerText',
+  beforeDraw: (chart: any) => {
+    const ctx = chart.ctx;
+    if (!chart.chartArea) return;
+    
+    const centerX = chart.chartArea.left + (chart.chartArea.right - chart.chartArea.left) / 2;
+    const centerY = chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2;
+    
+    // Получаем сумму из опций плагина
+    const pluginOptions = chart.options?.plugins?.centerText;
+    const totalSum = pluginOptions?.totalSum || 0;
+    
+    if (totalSum === 0) return;
+    
+    ctx.save();
+    ctx.font = 'bold 20px Nunito, sans-serif';
+    ctx.fillStyle = '#f1f5f9';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    const formattedSum = new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: 'RUB',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(totalSum);
+    
+    ctx.fillText(formattedSum, centerX, centerY);
+    ctx.restore();
+  }
+};
+
+ChartJS.register(centerTextPlugin);
+
 interface MonthlyChartsProps {
   files: WriteOffFile[];
 }
@@ -35,14 +71,17 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({ files }) => {
   // Локальное состояние: какие месяцы развернуты (показывать всех причин, а не топ-15)
   const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
 
-  // Группируем данные по месяцам
+  // Группируем данные по месяцам (с учётом суммы по дате записи)
   const monthlyData = useMemo(() => {
     if (!files || files.length === 0) {
       return [];
     }
 
     try {
-      const monthsMap = new Map<string, Map<string, number>>(); // month -> reason -> count
+      const monthsMap = new Map<string, {
+        reasons: Map<string, number>; // reason -> count
+        totalSum: number; // общая сумма по месяцу
+      }>();
 
       files.forEach(file => {
         if (!file.groups) return;
@@ -51,24 +90,33 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({ files }) => {
           group.items.forEach(item => {
             if (item.writeOffMonth) {
               if (!monthsMap.has(item.writeOffMonth)) {
-                monthsMap.set(item.writeOffMonth, new Map());
+                monthsMap.set(item.writeOffMonth, {
+                  reasons: new Map(),
+                  totalSum: 0
+                });
               }
-              const reasonsMap = monthsMap.get(item.writeOffMonth)!;
-              const currentCount = reasonsMap.get(group.reason) || 0;
-              reasonsMap.set(group.reason, currentCount + (item.quantity || 0));
+              const monthData = monthsMap.get(item.writeOffMonth)!;
+              const currentCount = monthData.reasons.get(group.reason) || 0;
+              monthData.reasons.set(group.reason, currentCount + (item.quantity || 0));
+              // Суммируем сумму по дате записи (writeOffDate)
+              monthData.totalSum += item.sum || 0;
             }
           });
         });
       });
 
       // Преобразуем в массив объектов
-      const result: Array<{ month: string; reasons: Array<{ reason: string; count: number }> }> = [];
-      monthsMap.forEach((reasonsMap, month) => {
-        const reasons = Array.from(reasonsMap.entries())
+      const result: Array<{ 
+        month: string; 
+        reasons: Array<{ reason: string; count: number }>;
+        totalSum: number;
+      }> = [];
+      monthsMap.forEach((monthData, month) => {
+        const reasons = Array.from(monthData.reasons.entries())
           .map(([reason, count]) => ({ reason, count }))
           .sort((a, b) => b.count - a.count);
         if (reasons.length > 0) {
-          result.push({ month, reasons });
+          result.push({ month, reasons, totalSum: monthData.totalSum });
         }
       });
 
@@ -110,7 +158,7 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({ files }) => {
   try {
     return (
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {monthlyData.map(({ month, reasons }) => {
+        {monthlyData.map(({ month, reasons, totalSum }) => {
           if (!reasons || reasons.length === 0) {
             return null;
           }
@@ -140,6 +188,9 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({ files }) => {
               },
             ],
           };
+
+        // Находим общую сумму для этого месяца
+        const monthTotalSum = monthlyData.find(m => m.month === month)?.totalSum || 0;
 
         const options = {
           responsive: true,
@@ -184,6 +235,9 @@ export const MonthlyCharts: React.FC<MonthlyChartsProps> = ({ files }) => {
                   return `${label}: ${value} шт. (${percentage})`;
                 }
               }
+            },
+            centerText: {
+              totalSum: monthTotalSum
             }
           },
           cutout: '60%',
