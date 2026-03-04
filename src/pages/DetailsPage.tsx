@@ -485,6 +485,7 @@ export const DetailsPage: React.FC = () => {
   });
   const [showAllRecords, setShowAllRecords] = useState(false);
   const [showAllComparison, setShowAllComparison] = useState(false);
+  const [showAverageQuality, setShowAverageQuality] = useState(false);
   const [isExpanding, setIsExpanding] = useState(false);
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string | null>(monthFromUrl);
 
@@ -729,6 +730,28 @@ export const DetailsPage: React.FC = () => {
             const entities = getTopKeys(d => d[entityKey] || 'Неизвестно', limit); 
             
             const datasets: any[] = [];
+            if (isOzonYandex && showAverageQuality) {
+                datasets.push({
+                    label: 'Средний показатель качества (%)',
+                    yAxisID: 'y',
+                    data: entities.map(entity => {
+                        const monthRates = months.map(month => {
+                            const defects = mainFilteredData
+                                .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
+                                .reduce((sum, item) => sum + item.quantity, 0);
+                            const sales = salesByNomenclature[month]?.[entity] || 0;
+                            return sales > 0 ? (defects / sales) * 100 : 0;
+                        });
+                        if (monthRates.length === 0) return 0;
+                        const averageRate = monthRates.reduce((sum, rate) => sum + rate, 0) / monthRates.length;
+                        return parseFloat(averageRate.toFixed(2));
+                    }),
+                    backgroundColor: '#0A84FF',
+                    borderRadius: 4,
+                    barPercentage: 0.8,
+                    categoryPercentage: 0.8
+                });
+            } else {
             months.forEach((month, index) => {
                 if (isOzonYandex) {
                     // 1. Rate Dataset (Left Y Axis)
@@ -774,6 +797,7 @@ export const DetailsPage: React.FC = () => {
                     });
                 }
             });
+            }
 
             return {
                 type: 'bar',
@@ -791,6 +815,18 @@ export const DetailsPage: React.FC = () => {
                                     const month = datasetLabel.split(' (')[0];
                                     
                                     if (isOzonYandex) {
+                                        if (datasetLabel === 'Средний показатель качества (%)') {
+                                            const totalDefects = months.reduce((sum, monthName) => {
+                                                const defects = mainFilteredData
+                                                    .filter(d => d.reportMonth === monthName && (d[entityKey] || 'Неизвестно') === entity)
+                                                    .reduce((acc, item) => acc + item.quantity, 0);
+                                                return sum + defects;
+                                            }, 0);
+                                            const totalSales = months.reduce((sum, monthName) => {
+                                                return sum + (salesByNomenclature[monthName]?.[entity] || 0);
+                                            }, 0);
+                                            return `${datasetLabel}: ${val}% (Брак: ${totalDefects} шт, Прод: ${totalSales} шт)`;
+                                        }
                                         if (datasetLabel.includes('% брака')) {
                                             const defects = mainFilteredData
                                                 .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
@@ -817,6 +853,26 @@ export const DetailsPage: React.FC = () => {
             const entities = getTopKeys(d => d[entityKey] || 'Неизвестно', limit); 
             
             const datasets: any[] = [];
+            if (isOzonYandex && showAverageQuality) {
+                datasets.push({
+                    label: 'Средний показатель качества (%)',
+                    xAxisID: 'x',
+                    data: entities.map(entity => {
+                        const monthRates = months.map(month => {
+                            const defects = mainFilteredData
+                                .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
+                                .reduce((sum, item) => sum + item.quantity, 0);
+                            const sales = salesByNomenclature[month]?.[entity] || 0;
+                            return sales > 0 ? (defects / sales) * 100 : 0;
+                        });
+                        if (monthRates.length === 0) return 0;
+                        const averageRate = monthRates.reduce((sum, rate) => sum + rate, 0) / monthRates.length;
+                        return parseFloat(averageRate.toFixed(2));
+                    }),
+                    backgroundColor: '#0A84FF',
+                    borderRadius: 4,
+                });
+            } else {
             months.forEach((month, index) => {
                 if (isOzonYandex) {
                     // Horizontal doesn't play well with dual X-axis for bars in Chart.js easily 
@@ -848,6 +904,7 @@ export const DetailsPage: React.FC = () => {
                     });
                 }
             });
+            }
 
             return {
                 type: 'bar',
@@ -865,6 +922,18 @@ export const DetailsPage: React.FC = () => {
                                     const datasetLabel = ctx.dataset.label;
                                     const month = datasetLabel.split(' (')[0];
                                     if (isOzonYandex) {
+                                        if (datasetLabel === 'Средний показатель качества (%)') {
+                                            const totalDefects = months.reduce((sum, monthName) => {
+                                                const defects = mainFilteredData
+                                                    .filter(d => d.reportMonth === monthName && (d[entityKey] || 'Неизвестно') === entity)
+                                                    .reduce((acc, item) => acc + item.quantity, 0);
+                                                return sum + defects;
+                                            }, 0);
+                                            const totalSales = months.reduce((sum, monthName) => {
+                                                return sum + (salesByNomenclature[monthName]?.[entity] || 0);
+                                            }, 0);
+                                            return `${datasetLabel}: ${val}% (Брак: ${totalDefects} шт, Прод: ${totalSales} шт)`;
+                                        }
                                         const defects = mainFilteredData
                                             .filter(d => d.reportMonth === month && (d[entityKey] || 'Неизвестно') === entity)
                                             .reduce((sum, item) => sum + item.quantity, 0);
@@ -1216,7 +1285,7 @@ export const DetailsPage: React.FC = () => {
         }
         default: return null;
     }
-  }, [mainFilteredData, type, tileChartTypes, showAllComparison]);
+  }, [mainFilteredData, type, tileChartTypes, showAllComparison, showAverageQuality, filteredSalesData, salesByNomenclature, isOzonYandex]);
 
   // Dynamic Layout Adjustment for Expanded Chart
   React.useEffect(() => {
@@ -1629,11 +1698,16 @@ export const DetailsPage: React.FC = () => {
       }
 
       if (chartType === 'period_comparison' || chartType === 'period_comparison_horizontal') {
-        const monthFromDataset = datasetLabel.includes(' (') 
-          ? datasetLabel.split(' (')[0].trim() 
-          : datasetLabel.trim();
-        if (monthFromDataset) {
-          setSelectedMonthFilter(monthFromDataset);
+        const isAverageDataset = datasetLabel === 'Средний показатель качества (%)';
+        if (isAverageDataset) {
+          setSelectedMonthFilter(null);
+        } else {
+          const monthFromDataset = datasetLabel.includes(' (') 
+            ? datasetLabel.split(' (')[0].trim() 
+            : datasetLabel.trim();
+          if (monthFromDataset) {
+            setSelectedMonthFilter(monthFromDataset);
+          }
         }
 
         // Для дашборда "Анализ причины / Заводской брак":
@@ -2375,6 +2449,15 @@ export const DetailsPage: React.FC = () => {
                         {showAllComparison ? 'Свернуть' : 'Показать всех'}
                     </IOSButton>
                 )}
+                {type === 'reason' && isOzonYandex && (tileChartTypes['comparison'] === 'period_comparison' || tileChartTypes['comparison'] === 'period_comparison_horizontal') && (
+                    <IOSButton
+                        onClick={() => setShowAverageQuality(prev => !prev)}
+                        className="!py-1 !px-2 text-xs"
+                        variant={showAverageQuality ? "primary" : "secondary"}
+                    >
+                        Средний показатель качества
+                    </IOSButton>
+                )}
                 <select 
                     value={tileChartTypes['comparison'] || 'defect_dynamics'}
                     onChange={(e) => setTileChartTypes(prev => ({...prev, comparison: e.target.value}))}
@@ -2399,7 +2482,7 @@ export const DetailsPage: React.FC = () => {
           <div className="flex-grow min-h-0 relative flex items-center justify-center">
               {(() => {
                 const chartType = tileChartTypes['comparison'] || 'defect_dynamics';
-                const chartKey = `${chartType}-${showAllComparison}-${JSON.stringify(localFilter)}`;
+                const chartKey = `${chartType}-${showAllComparison}-${showAverageQuality}-${JSON.stringify(localFilter)}`;
                 return (
                   <React.Fragment key={chartKey}>
                     {comparativeChartConfig.type === 'bar' && <Bar data={comparativeChartConfig.data} options={{...comparativeChartConfig.options, onClick: handleComparativeChartClick} as any} />}

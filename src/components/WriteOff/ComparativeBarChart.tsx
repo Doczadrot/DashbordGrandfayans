@@ -3,6 +3,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Toolti
 import { Bar } from 'react-chartjs-2';
 import { WriteOffFile } from '../../types/writeoff.types';
 import { GlassCard } from '../UI/GlassCard';
+import { useNavigate } from 'react-router-dom';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -26,6 +27,7 @@ const parseMonthToDate = (monthStr: string): Date => {
 
 export const ComparativeBarChart: React.FC<ComparativeBarChartProps> = ({ files }) => {
   const [showAll, setShowAll] = useState(false);
+  const navigate = useNavigate();
 
   // Группируем данные: причина -> месяц -> количество
   const chartData = useMemo(() => {
@@ -140,6 +142,18 @@ export const ComparativeBarChart: React.FC<ComparativeBarChartProps> = ({ files 
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    // Переход в детальный дашборд по клику на столбец
+    onClick: (_event: unknown, elements: any[]) => {
+      if (!elements || elements.length === 0) return;
+      const { index, datasetIndex } = elements[0];
+      const reason = chartData.labels[index];
+      const dataset = chartData.datasets[datasetIndex] as any;
+      const month = dataset.label as string;
+
+      if (!reason || !month) return;
+
+      navigate(`/writeoff/details?month=${encodeURIComponent(month)}&reason=${encodeURIComponent(reason)}`);
+    },
     plugins: {
       legend: {
         position: 'top' as const,

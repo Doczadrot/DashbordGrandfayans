@@ -53,6 +53,54 @@ export const WriteOffDetailsPage: React.FC = () => {
       .sort((a, b) => b.count - a.count);
   }, [filteredItems]);
 
+  // Группируем одинаковые товары по номенклатуре
+  const groupedItems = useMemo(() => {
+    const map = new Map<string, {
+      nomenclature: string;
+      totalQuantity: number;
+      totalSum: number;
+      supplier?: string;
+      warehouses: string[];
+      documents: string[];
+      dates: string[];
+    }>();
+
+    filteredItems.forEach(item => {
+      const key = item.nomenclature || 'Не указано';
+      if (!map.has(key)) {
+        map.set(key, {
+          nomenclature: key,
+          totalQuantity: 0,
+          totalSum: 0,
+          supplier: item.supplier || 'Не указано',
+          warehouses: [],
+          documents: [],
+          dates: [],
+        });
+      }
+      const entry = map.get(key)!;
+      entry.totalQuantity += item.quantity;
+      entry.totalSum += item.sum;
+
+      const warehouse = item.warehouse || 'Не указано';
+      if (warehouse && !entry.warehouses.includes(warehouse)) {
+        entry.warehouses.push(warehouse);
+      }
+
+      const doc = item.writeOffDocument || 'Не указано';
+      if (doc && !entry.documents.includes(doc)) {
+        entry.documents.push(doc);
+      }
+
+      const date = item.writeOffDate || 'Не указано';
+      if (date && !entry.dates.includes(date)) {
+        entry.dates.push(date);
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.totalQuantity - a.totalQuantity);
+  }, [filteredItems]);
+
   const totalQuantity = filteredItems.reduce((sum, item) => sum + item.quantity, 0);
   const totalSum = filteredItems.reduce((sum, item) => sum + item.sum, 0);
 
@@ -147,19 +195,40 @@ export const WriteOffDetailsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.map((item, idx) => (
-                  <tr key={idx} className="text-gray-300 border-b border-white/5 hover:bg-white/5">
-                    <td className="px-4 py-3">{item.nomenclature}</td>
-                    <td className="px-4 py-3 text-right">{item.quantity.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right">
-                      {item.sum.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })}
-                    </td>
-                    <td className="px-4 py-3">{item.supplier || 'Не указано'}</td>
-                    <td className="px-4 py-3">{item.warehouse || 'Не указано'}</td>
-                    <td className="px-4 py-3">{item.writeOffDocument || 'Не указано'}</td>
-                    <td className="px-4 py-3">{item.writeOffDate || 'Не указано'}</td>
-                  </tr>
-                ))}
+                {groupedItems.map((item, idx) => {
+                  const hasManyWarehouses = item.warehouses.length > 1;
+                  const hasManyDocuments = item.documents.length > 1;
+                  const hasManyDates = item.dates.length > 1;
+
+                  return (
+                    <tr key={idx} className="text-gray-300 border-b border-white/5 hover:bg-white/5">
+                      <td className="px-4 py-3">{item.nomenclature}</td>
+                      <td className="px-4 py-3 text-right">{item.totalQuantity.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right">
+                        {item.totalSum.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })}
+                      </td>
+                      <td className="px-4 py-3">{item.supplier || 'Не указано'}</td>
+                      <td
+                        className="px-4 py-3"
+                        title={hasManyWarehouses ? item.warehouses.join('\n') : item.warehouses[0] || 'Не указано'}
+                      >
+                        {hasManyWarehouses ? 'Несколько складов (наведите для просмотра)' : (item.warehouses[0] || 'Не указано')}
+                      </td>
+                      <td
+                        className="px-4 py-3"
+                        title={hasManyDocuments ? item.documents.join('\n') : item.documents[0] || 'Не указано'}
+                      >
+                        {hasManyDocuments ? 'Несколько документов (наведите для просмотра)' : (item.documents[0] || 'Не указано')}
+                      </td>
+                      <td
+                        className="px-4 py-3"
+                        title={hasManyDates ? item.dates.join('\n') : item.dates[0] || 'Не указано'}
+                      >
+                        {hasManyDates ? 'Несколько дат (наведите для просмотра)' : (item.dates[0] || 'Не указано')}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
